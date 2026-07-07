@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FitFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #F5F7FA; color: #1A1A2E; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .container { text-align: center; padding: 40px; }
+  .logo { font-size: 48px; font-weight: 700; color: #1A1A2E; margin-bottom: 8px; }
+  .logo span { color: #00B87A; }
+  .subtitle { font-size: 18px; color: #5A5A7A; margin-bottom: 40px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; background: #E6F7F1; color: #008F5E; padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-bottom: 40px; }
+  .dot { width: 8px; height: 8px; background: #00B87A; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; max-width: 700px; margin: 0 auto 40px; }
+  .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+  .card-icon { font-size: 32px; margin-bottom: 12px; }
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .card-desc { font-size: 12px; color: #5A5A7A; line-height: 1.5; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; background: #00B87A; color: white; padding: 12px 28px; border-radius: 25px; font-size: 15px; font-weight: 600; text-decoration: none; transition: all 0.2s; border: none; cursor: pointer; }
+  .btn:hover { background: #008F5E; transform: translateY(-2px); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">Fit<span>Flow</span></div>
+  <div class="subtitle">SaaS платформа для управления фитнес-тренировками</div>
+  <div class="status"><div class="dot"></div> Система работает</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon">🏋️</div>
+      <div class="card-title">Тренировки</div>
+      <div class="card-desc">Персональные программы для каждого клиента</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📅</div>
+      <div class="card-title">Расписание</div>
+      <div class="card-desc">Планирование и учёт посещаемости</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📈</div>
+      <div class="card-title">Прогресс</div>
+      <div class="card-desc">Отслеживание результатов клиентов</div>
+    </div>
+  </div>
+
+  <a href="/docs" class="btn">📖 Открыть API документацию</a>
+</div>
+
+<script>
+  // Проверяем статус API
+  fetch('/api/health')
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'ok') {
+        document.querySelector('.status').innerHTML =
+          '<div class="dot"></div> API работает · ' + d.service;
+      }
+    })
+    .catch(() => {
+      document.querySelector('.status').style.background = '#FFF0F3';
+      document.querySelector('.status').style.color = '#FF4D6D';
+      document.querySelector('.status').innerHTML = '⚠️ API недоступен';
+    });
+</script>
+</body>
+</html>
