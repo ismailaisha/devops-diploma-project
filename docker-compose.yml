@@ -1,120 +1,28 @@
-
-version: '3.8'
-
 services:
-
-  # ─────────────────────────────────────────
-  # etcd — хранит состояние кластера Patroni
-  # Это как "мозг" кластера PostgreSQL
-  # Patroni спрашивает etcd "кто сейчас мастер?"
-  # ─────────────────────────────────────────
-  etcd:
-    image: bitnami/etcd:3.5
-    container_name: fitflow_etcd
+  postgres:
+    image: postgres:15-alpine
+    container_name: fitflow_postgres
     restart: unless-stopped
     environment:
-      ALLOW_NONE_AUTHENTICATION: "yes"
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
-      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      POSTGRES_DB: fitflow
+      POSTGRES_USER: fitflow
+      POSTGRES_PASSWORD: fitflow_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     networks:
       - fitflow_network
     healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
+      test: ["CMD-SHELL", "pg_isready -U fitflow"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ─────────────────────────────────────────
-  # PostgreSQL Master — основная база данных
-  # Принимает все запросы на запись
-  # ─────────────────────────────────────────
-  pg-master:
-    image: postgres:15-alpine
-    container_name: fitflow_pg_master
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-fitflow}
-      POSTGRES_USER: ${POSTGRES_USER:-fitflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_password}
-      POSTGRES_REPLICATION_USER: replicator
-      POSTGRES_REPLICATION_PASSWORD: replicator_password
-    volumes:
-      - pg_master_data:/var/lib/postgresql/data
-      - ./infrastructure/docker/postgres/master-init.sh:/docker-entrypoint-initdb.d/init.sh
-    ports:
-      - "5432:5432"
-    networks:
-      - fitflow_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fitflow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  # ─────────────────────────────────────────
-  # PostgreSQL Replica — копия мастера
-  # Копирует данные с мастера через WAL
-  # Принимает только запросы на чтение
-  # ─────────────────────────────────────────
-  pg-replica:
-    image: postgres:15-alpine
-    container_name: fitflow_pg_replica
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-fitflow}
-      POSTGRES_USER: ${POSTGRES_USER:-fitflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitflow_password}
-      PGUSER: replicator
-      PGPASSWORD: replicator_password
-    volumes:
-      - pg_replica_data:/var/lib/postgresql/data
-      - ./infrastructure/docker/postgres/replica-init.sh:/docker-entrypoint-initdb.d/init.sh
-    ports:
-      - "5433:5432"
-    depends_on:
-      pg-master:
-        condition: service_healthy
-    networks:
-      - fitflow_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fitflow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  # ─────────────────────────────────────────
-  # HAProxy — балансировщик нагрузки
-  # Порт 5000 → всегда на мастер (запись)
-  # Порт 5001 → всегда на реплику (чтение)
-  # Если мастер упал → автоматически переключает
-  # ─────────────────────────────────────────
-  haproxy:
-    image: haproxy:2.8-alpine
-    container_name: fitflow_haproxy
-    restart: unless-stopped
-    volumes:
-      - ./infrastructure/docker/postgres/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    ports:
-      - "5000:5000"
-      - "5001:5001"
-      - "7000:7000"
-    depends_on:
-      pg-master:
-        condition: service_healthy
-    networks:
-      - fitflow_network
-
-  # ─────────────────────────────────────────
-  # Redis — кэш и очередь задач
-  # Celery Worker берёт задачи отсюда
-  # ─────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: fitflow_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
     ports:
       - "6379:6379"
     networks:
@@ -125,10 +33,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─────────────────────────────────────────
-  # FastAPI — REST API
-  # Собирается из нашего Dockerfile
-  # ─────────────────────────────────────────
   api:
     build:
       context: ./services/api
@@ -137,14 +41,14 @@ services:
     container_name: fitflow_api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-fitflow}:${POSTGRES_PASSWORD:-fitflow_password}@pg-master:5432/${POSTGRES_DB:-fitflow}
+      DATABASE_URL: postgresql://fitflow:fitflow_password@postgres:5432/fitflow
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      DEBUG: ${DEBUG:-True}
+      SECRET_KEY: dev-secret-key
+      DEBUG: "True"
     ports:
       - "8000:8000"
     depends_on:
-      pg-master:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -156,10 +60,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # ─────────────────────────────────────────
-  # Celery Worker — фоновые задачи
-  # Email уведомления, напоминания
-  # ─────────────────────────────────────────
   worker:
     build:
       context: ./services/worker
@@ -168,21 +68,17 @@ services:
     container_name: fitflow_worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-fitflow}:${POSTGRES_PASSWORD:-fitflow_password}@pg-master:5432/${POSTGRES_DB:-fitflow}
+      DATABASE_URL: postgresql://fitflow:fitflow_password@postgres:5432/fitflow
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      SECRET_KEY: dev-secret-key
     depends_on:
-      redis:
+      postgres:
         condition: service_healthy
-      api:
+      redis:
         condition: service_healthy
     networks:
       - fitflow_network
 
-  # ─────────────────────────────────────────
-  # Nginx + Frontend
-  # Отдаёт статику и проксирует к API
-  # ─────────────────────────────────────────
   frontend:
     build:
       context: ./services/frontend
@@ -197,25 +93,9 @@ services:
     networks:
       - fitflow_network
 
-# ─────────────────────────────────────────
-# Volumes — данные хранятся между перезапусками
-# Без volumes — при остановке контейнера
-# все данные БД теряются
-# ─────────────────────────────────────────
 volumes:
-  pg_master_data:
-    driver: local
-  pg_replica_data:
-    driver: local
-  redis_data:
-    driver: local
+  pg_data:
 
-# ─────────────────────────────────────────
-# Networks — все сервисы в одной сети
-# Обращаются друг к другу по имени сервиса
-# api → pg-master (не по IP, а по имени!)
-# ─────────────────────────────────────────
 networks:
   fitflow_network:
     driver: bridge
-    name: fitflow_network

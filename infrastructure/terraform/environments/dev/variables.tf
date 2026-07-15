@@ -15,6 +15,12 @@ variable "environment" {
   
 }
 
+variable "instance_type" {
+  description = "Тип EC2 инстанса"
+  type        = string
+  default     = "t2.micro"
+}
+
 variable "ssh_key_name" {
     type = string
     default = "fitflow-key"
