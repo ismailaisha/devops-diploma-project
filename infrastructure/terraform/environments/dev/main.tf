@@ -14,6 +14,10 @@ data "aws_ami" "ubuntu" {
   
 }
 
+data "http" "my_ip" {
+  url = "https://ifconfig.me/ip"
+}
+
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -106,7 +110,7 @@ resource "aws_security_group" "app_server" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["${var.my_ip}"]
+    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
     description = "SSH only from my IP"
   }
 
@@ -148,7 +152,7 @@ resource "aws_security_group" "jenkins" {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["${var.my_ip}"]
+    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
     description = "Jenkins UI"
   }
 
@@ -157,7 +161,7 @@ resource "aws_security_group" "jenkins" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["${var.my_ip}"]
+    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
     description = "SSH only from my IP"
   }
 

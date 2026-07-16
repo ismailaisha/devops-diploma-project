@@ -27,10 +27,6 @@ variable "ssh_key_name" {
   
 }
 
-variable "my_ip" {
-    type = string
-  
-}
 
 variable "s3_bucket_name" {
     type = string
