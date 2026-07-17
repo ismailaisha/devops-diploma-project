@@ -1,0 +1,120 @@
+---
+# ─────────────────────────────────────────
+# Роль common — базовая настройка сервера
+# Выполняется на ВСЕХ серверах
+# ─────────────────────────────────────────
+
+# Обновляем список пакетов
+# Как apt update на Ubuntu
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+  tags: packages
+
+# Устанавливаем базовые пакеты
+# которые нужны на каждом сервере
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - ufw
+      - unzip
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - python3-pip
+    state: present
+  tags: packages
+
+# Создаём пользователя deployer
+# Jenkins будет деплоить через этого пользователя
+# не через root — это безопасно
+- name: Create deployer user
+  user:
+    name: deployer
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+  tags: users
+
+# Добавляем SSH ключ для deployer
+# Чтобы Jenkins мог подключаться без пароля
+- name: Add SSH key for deployer
+  authorized_key:
+    user: deployer
+    key: "{{ lookup('file', '~/.ssh/fitflow.pub') }}"
+    state: present
+  tags: users
+
+# Настраиваем timezone
+- name: Set timezone to UTC
+  timezone:
+    name: UTC
+  tags: system
+
+# ─────────────────────────────────────────
+# Настройка UFW файрвола
+# UFW — Uncomplicated Firewall
+# Простой интерфейс для iptables
+# ─────────────────────────────────────────
+
+# Запрещаем всё входящее по умолчанию
+- name: UFW - deny all incoming
+  ufw:
+    direction: incoming
+    policy: deny
+  tags: firewall
+
+# Разрешаем всё исходящее
+- name: UFW - allow all outgoing
+  ufw:
+    direction: outgoing
+    policy: allow
+  tags: firewall
+
+# Разрешаем SSH — обязательно до включения UFW
+# Иначе потеряем доступ к серверу!
+- name: UFW - allow SSH
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+  tags: firewall
+
+# Включаем UFW
+- name: UFW - enable
+  ufw:
+    state: enabled
+  tags: firewall
+
+# ─────────────────────────────────────────
+# Настройка SSH безопасности
+# ─────────────────────────────────────────
+
+# Отключаем вход по паролю — только по ключу
+# Это защита от брутфорс атак
+- name: Disable SSH password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    state: present
+  notify: Restart SSH
+  tags: security
+
+# Отключаем вход от root напрямую
+- name: Disable root SSH login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^PermitRootLogin"
+    line: "PermitRootLogin no"
+    state: present
+  notify: Restart SSH
+  tags: security

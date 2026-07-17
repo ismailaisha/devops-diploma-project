@@ -1,0 +1,121 @@
+---
+# ─────────────────────────────────────────
+# Роль app — настройка App Server
+# Устанавливает Docker и запускает
+# приложение через docker-compose
+# ─────────────────────────────────────────
+
+# ─── Установка Docker ───────────────────
+
+# Добавляем официальный GPG ключ Docker
+# Без него Ubuntu не доверяет пакетам от Docker
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  tags: docker
+
+# Добавляем официальный репозиторий Docker
+# По умолчанию в Ubuntu нет актуальной версии Docker
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+    state: present
+  tags: docker
+
+# Устанавливаем Docker Engine
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+  tags: docker
+
+# Запускаем Docker и добавляем в автозапуск
+# При перезагрузке сервера Docker стартует сам
+- name: Start and enable Docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+  tags: docker
+
+# Добавляем пользователя deployer в группу docker
+# Чтобы запускать docker команды без sudo
+- name: Add deployer to docker group
+  user:
+    name: deployer
+    groups: docker
+    append: true
+  tags: docker
+
+# ─── Открываем порты в UFW ──────────────
+
+# HTTP — для фронтенда
+- name: UFW - allow HTTP
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+  tags: firewall
+
+# HTTPS — для SSL
+- name: UFW - allow HTTPS
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+  tags: firewall
+
+# API порт — для FastAPI
+- name: UFW - allow API
+  ufw:
+    rule: allow
+    port: "8000"
+    proto: tcp
+  tags: firewall
+
+# ─── Деплой приложения ──────────────────
+
+# Создаём папку для приложения на сервере
+- name: Create app directory
+  file:
+    path: /opt/fitflow
+    state: directory
+    owner: deployer
+    group: deployer
+    mode: "0755"
+  tags: deploy
+
+# Копируем docker-compose.yml на сервер
+- name: Copy docker-compose.yml
+  copy:
+    src: "{{ playbook_dir }}/../../../docker-compose.yml"
+    dest: /opt/fitflow/docker-compose.yml
+    owner: deployer
+    group: deployer
+    mode: "0644"
+  tags: deploy
+
+# Копируем .env файл на сервер
+- name: Copy .env file
+  copy:
+    src: "{{ playbook_dir }}/../../../.env"
+    dest: /opt/fitflow/.env
+    owner: deployer
+    group: deployer
+    mode: "0600"
+  tags: deploy
+
+# Запускаем приложение через docker-compose
+- name: Start application
+  shell: |
+    cd /opt/fitflow
+    docker compose pull
+    docker compose up -d
+  become_user: deployer
+  tags: deploy

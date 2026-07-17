@@ -1,0 +1,25 @@
+[Interface]
+# Приватный ключ этого сервера
+PrivateKey = {{ wg_private_key.stdout }}
+# IP адрес в VPN сети
+Address = {{ wireguard_ip }}/24
+# Порт на котором слушает WireGuard
+ListenPort = 51820
+
+# ─── App Server ──────────────────────────
+{% if inventory_hostname != 'app_server' %}
+[Peer]
+PublicKey = {{ hostvars['app_server']['wg_public_key']['stdout'] }}
+AllowedIPs = 10.8.0.1/32
+Endpoint = {{ hostvars['app_server']['ansible_host'] }}:51820
+PersistentKeepalive = 25
+{% endif %}
+
+# ─── Jenkins Server ──────────────────────
+{% if inventory_hostname != 'jenkins_server' %}
+[Peer]
+PublicKey = {{ hostvars['jenkins_server']['wg_public_key']['stdout'] }}
+AllowedIPs = 10.8.0.2/32
+Endpoint = {{ hostvars['jenkins_server']['ansible_host'] }}:51820
+PersistentKeepalive = 25
+{% endif %}

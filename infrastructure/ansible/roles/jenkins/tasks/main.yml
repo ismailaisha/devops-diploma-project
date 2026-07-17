@@ -1,0 +1,121 @@
+---
+# ─────────────────────────────────────────
+# Роль jenkins — настройка Jenkins Server
+# Устанавливает Java, Jenkins, Docker
+# ─────────────────────────────────────────
+
+# ─── Установка Java ─────────────────────
+# Jenkins требует Java 17 или выше
+- name: Install Java
+  apt:
+    name: openjdk-17-jdk
+    state: present
+    update_cache: true
+  tags: java
+
+# Проверяем версию Java
+- name: Check Java version
+  command: java -version
+  register: java_version
+  tags: java
+
+# ─── Установка Jenkins ──────────────────
+
+# Добавляем GPG ключ Jenkins
+- name: Add Jenkins GPG key
+  apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+  tags: jenkins
+
+# Добавляем репозиторий Jenkins
+- name: Add Jenkins repository
+  apt_repository:
+    repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+  tags: jenkins
+
+# Устанавливаем Jenkins
+- name: Install Jenkins
+  apt:
+    name: jenkins
+    state: present
+    update_cache: true
+  tags: jenkins
+
+# Запускаем Jenkins и добавляем в автозапуск
+- name: Start and enable Jenkins
+  service:
+    name: jenkins
+    state: started
+    enabled: true
+  tags: jenkins
+
+# ─── Установка Docker ───────────────────
+# Jenkins будет собирать Docker образы
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  tags: docker
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+    state: present
+  tags: docker
+
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+  tags: docker
+
+- name: Start and enable Docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+  tags: docker
+
+# Добавляем Jenkins в группу docker
+# Чтобы Jenkins мог запускать docker команды
+- name: Add Jenkins to docker group
+  user:
+    name: jenkins
+    groups: docker
+    append: true
+  notify: Restart Jenkins
+  tags: docker
+
+# ─── Открываем порты ────────────────────
+
+# Jenkins UI
+- name: UFW - allow Jenkins
+  ufw:
+    rule: allow
+    port: "8080"
+    proto: tcp
+  tags: firewall
+
+# ─── Получаем начальный пароль Jenkins ──
+# При первой установке Jenkins генерирует
+# временный пароль для первого входа
+
+- name: Get Jenkins initial password
+  command: cat /var/lib/jenkins/secrets/initialAdminPassword
+  register: jenkins_password
+  ignore_errors: true
+  tags: jenkins
+
+- name: Show Jenkins initial password
+  debug:
+    msg: "Jenkins initial password: {{ jenkins_password.stdout }}"
+  when: jenkins_password.stdout is defined
+  tags: jenkins
