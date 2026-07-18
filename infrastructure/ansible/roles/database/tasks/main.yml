@@ -1,0 +1,187 @@
+---
+# ─────────────────────────────────────────
+# Роль database — настройка PostgreSQL
+# с репликацией через Patroni
+# Выполняется на pg_master и pg_replica
+# ─────────────────────────────────────────
+
+# ─── Установка зависимостей ─────────────
+
+- name: Install dependencies
+  apt:
+    name:
+      - python3-pip
+      - python3-dev
+      - libpq-dev
+      - wget
+      - curl
+    state: present
+    update_cache: true
+  tags: packages
+
+# ─── Установка PostgreSQL 15 ─────────────
+
+# Добавляем официальный репозиторий PostgreSQL
+# В Ubuntu по умолчанию старая версия
+- name: Add PostgreSQL GPG key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  tags: postgres
+
+- name: Add PostgreSQL repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
+    state: present
+  tags: postgres
+
+- name: Install PostgreSQL 15
+  apt:
+    name:
+      - postgresql-15
+      - postgresql-client-15
+      - postgresql-contrib-15
+    state: present
+    update_cache: true
+  tags: postgres
+
+# Останавливаем PostgreSQL — Patroni будет управлять им
+# Если оба запущены одновременно — конфликт
+- name: Stop PostgreSQL service
+  service:
+    name: postgresql
+    state: stopped
+    enabled: false
+  tags: postgres
+
+# ─── Установка etcd ──────────────────────
+# etcd хранит информацию о том кто сейчас мастер
+# Patroni спрашивает etcd при каждом решении
+
+- name: Install etcd
+  apt:
+    name: etcd
+    state: present
+  tags: etcd
+
+- name: Start and enable etcd
+  service:
+    name: etcd
+    state: started
+    enabled: true
+  tags: etcd
+
+# ─── Установка Patroni ───────────────────
+# Patroni — менеджер высокой доступности
+# для PostgreSQL
+
+- name: Install Patroni
+  pip:
+    name:
+      - patroni[etcd]
+      - psycopg2-binary
+    state: present
+  tags: patroni
+
+# Создаём папку для конфига Patroni
+- name: Create Patroni config directory
+  file:
+    path: /etc/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  tags: patroni
+
+# Создаём папку для данных PostgreSQL
+- name: Create PostgreSQL data directory
+  file:
+    path: /data/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+  tags: patroni
+
+# Копируем конфиг Patroni на сервер
+# Используем шаблон — разные настройки для мастера и реплики
+- name: Copy Patroni config
+  template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: Restart Patroni
+  tags: patroni
+
+# Создаём systemd сервис для Patroni
+- name: Create Patroni systemd service
+  copy:
+    content: |
+      [Unit]
+      Description=Patroni PostgreSQL HA
+      After=network.target
+
+      [Service]
+      User=postgres
+      Group=postgres
+      ExecStart=/usr/local/bin/patroni /etc/patroni/patroni.yml
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/patroni.service
+    mode: "0644"
+  notify: Reload systemd
+  tags: patroni
+
+# Запускаем Patroni
+- name: Start and enable Patroni
+  service:
+    name: patroni
+    state: started
+    enabled: true
+  tags: patroni
+
+# ─── Настройка бэкапов ───────────────────
+# Ночной бэкап в S3 через cron
+
+- name: Install AWS CLI for backups
+  pip:
+    name: awscli
+    state: present
+  tags: backup
+
+# Создаём скрипт бэкапа
+- name: Create backup script
+  copy:
+    content: |
+      #!/bin/bash
+      DATE=$(date +%Y%m%d_%H%M%S)
+      BACKUP_FILE="/tmp/fitflow_backup_${DATE}.sql.gz"
+      
+      # Создаём бэкап
+      pg_dump -U postgres fitflow | gzip > $BACKUP_FILE
+      
+      # Загружаем в S3
+      aws s3 cp $BACKUP_FILE s3://fitflow-backups-080403789929/backups/
+      
+      # Удаляем локальный файл
+      rm -f $BACKUP_FILE
+      
+      echo "Backup completed: $DATE"
+    dest: /usr/local/bin/fitflow-backup.sh
+    mode: "0755"
+  tags: backup
+
+# Добавляем в cron — каждую ночь в 2:00
+- name: Add backup cron job
+  cron:
+    name: "FitFlow database backup"
+    minute: "0"
+    hour: "2"
+    job: "/usr/local/bin/fitflow-backup.sh >> /var/log/fitflow-backup.log 2>&1"
+    user: postgres
+  tags: backup

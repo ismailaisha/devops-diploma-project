@@ -1,0 +1,151 @@
+---
+# ─────────────────────────────────────────
+# Роль monitoring — настройка мониторинга
+# Prometheus + Grafana + Loki + Alertmanager
+# ─────────────────────────────────────────
+
+# ─── Установка Docker ───────────────────
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  tags: docker
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+    state: present
+  tags: docker
+
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+  tags: docker
+
+- name: Start and enable Docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+  tags: docker
+
+# ─── Создаём структуру папок ────────────
+
+- name: Create monitoring directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/monitoring
+    - /opt/monitoring/prometheus
+    - /opt/monitoring/grafana
+    - /opt/monitoring/loki
+    - /opt/monitoring/alertmanager
+  tags: monitoring
+
+# ─── Копируем конфиги ───────────────────
+
+- name: Copy Prometheus config
+  template:
+    src: prometheus.yml.j2
+    dest: /opt/monitoring/prometheus/prometheus.yml
+    mode: "0644"
+  notify: Restart monitoring
+  tags: monitoring
+
+- name: Copy Alertmanager config
+  template:
+    src: alertmanager.yml.j2
+    dest: /opt/monitoring/alertmanager/alertmanager.yml
+    mode: "0644"
+  notify: Restart monitoring
+  tags: monitoring
+
+- name: Copy Loki config
+  copy:
+    content: |
+      auth_enabled: false
+
+      server:
+        http_listen_port: 3100
+
+      ingester:
+        lifecycler:
+          address: 127.0.0.1
+          ring:
+            kvstore:
+              store: inmemory
+            replication_factor: 1
+
+      schema_config:
+        configs:
+          - from: 2020-10-24
+            store: boltdb-shipper
+            object_store: filesystem
+            schema: v11
+            index:
+              prefix: index_
+              period: 24h
+
+      storage_config:
+        boltdb_shipper:
+          active_index_directory: /loki/index
+          cache_location: /loki/index_cache
+        filesystem:
+          directory: /loki/chunks
+
+      limits_config:
+        reject_old_samples: true
+        reject_old_samples_max_age: 168h
+    dest: /opt/monitoring/loki/loki.yml
+    mode: "0644"
+  tags: monitoring
+
+# ─── Копируем docker-compose ─────────────
+
+- name: Copy monitoring docker-compose
+  template:
+    src: docker-compose.monitoring.yml.j2
+    dest: /opt/monitoring/docker-compose.yml
+    mode: "0644"
+  notify: Restart monitoring
+  tags: monitoring
+
+# ─── Запускаем мониторинг ────────────────
+
+- name: Start monitoring stack
+  shell: |
+    cd /opt/monitoring
+    docker compose up -d
+  tags: monitoring
+
+# ─── Открываем порты ────────────────────
+
+- name: UFW - allow Grafana
+  ufw:
+    rule: allow
+    port: "3000"
+    proto: tcp
+  tags: firewall
+
+- name: UFW - allow Prometheus
+  ufw:
+    rule: allow
+    port: "9090"
+    proto: tcp
+  tags: firewall
+
+- name: UFW - allow Loki
+  ufw:
+    rule: allow
+    port: "3100"
+    proto: tcp
+  tags: firewall
