@@ -1,0 +1,36 @@
+---
+- name: Common setup for all servers
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Setup WireGuard VPN
+  hosts: aws
+  become: true
+  roles:
+    - wireguard
+
+- name: Setup App Server
+  hosts: app
+  become: true
+  roles:
+    - app
+
+- name: Setup Jenkins Server
+  hosts: jenkins
+  become: true
+  roles:
+    - jenkins
+
+- name: Setup Database Servers
+  hosts: database
+  become: true
+  roles:
+    - database
+
+- name: Setup Monitoring Server
+  hosts: monitoring
+  become: true
+  roles:
+    - monitoring

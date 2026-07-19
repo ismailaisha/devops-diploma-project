@@ -15,7 +15,7 @@ data "aws_ami" "ubuntu" {
 }
 
 data "http" "my_ip" {
-  url = "https://ifconfig.me/ip"
+  url = "https://ipv4.icanhazip.com"
 }
 
 resource "aws_vpc" "main" {

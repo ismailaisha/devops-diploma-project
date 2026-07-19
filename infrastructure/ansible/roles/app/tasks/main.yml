@@ -111,11 +111,20 @@
     mode: "0600"
   tags: deploy
 
+# Устанавливаем acl — нужен для переключения
+# между пользователями через become_user
+# Без него Ansible не может создать временные файлы
+- name: Установка пакета acl
+  apt:
+    name: acl
+    state: present
+  tags: deploy
+
 # Запускаем приложение через docker-compose
 - name: Start application
   shell: |
     cd /opt/fitflow
-    docker compose pull
     docker compose up -d
+  become: true
   become_user: deployer
   tags: deploy
