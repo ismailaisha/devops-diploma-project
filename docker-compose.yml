@@ -34,10 +34,7 @@ services:
       retries: 5
 
   api:
-    build:
-      context: ./services/api
-      dockerfile: Dockerfile
-      target: runtime
+    image: aisharust94/fitflow-api:50c6f65
     container_name: fitflow_api
     restart: unless-stopped
     environment:
@@ -61,10 +58,7 @@ services:
       retries: 3
 
   worker:
-    build:
-      context: ./services/worker
-      dockerfile: Dockerfile
-      target: runtime
+    image: aisharust94/fitflow-worker:50c6f65
     container_name: fitflow_worker
     restart: unless-stopped
     environment:
@@ -80,11 +74,7 @@ services:
       - fitflow_network
 
   frontend:
-    build:
-      context: ./services/frontend
-      dockerfile: Dockerfile
-    container_name: fitflow_frontend
-    restart: unless-stopped
+    image: aisharust94/fitflow-frontend:50c6f65
     ports:
       - "80:80"
     depends_on:
