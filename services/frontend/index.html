@@ -1,71 +1,1256 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FitFlow</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', sans-serif; background: #F5F7FA; color: #1A1A2E; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .container { text-align: center; padding: 40px; }
-  .logo { font-size: 48px; font-weight: 700; color: #1A1A2E; margin-bottom: 8px; }
-  .logo span { color: #00B87A; }
-  .subtitle { font-size: 18px; color: #5A5A7A; margin-bottom: 40px; }
-  .status { display: inline-flex; align-items: center; gap: 8px; background: #E6F7F1; color: #008F5E; padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-bottom: 40px; }
-  .dot { width: 8px; height: 8px; background: #00B87A; border-radius: 50%; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
-  .cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; max-width: 700px; margin: 0 auto 40px; }
-  .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-  .card-icon { font-size: 32px; margin-bottom: 12px; }
-  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  .card-desc { font-size: 12px; color: #5A5A7A; line-height: 1.5; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; background: #00B87A; color: white; padding: 12px 28px; border-radius: 25px; font-size: 15px; font-weight: 600; text-decoration: none; transition: all 0.2s; border: none; cursor: pointer; }
-  .btn:hover { background: #008F5E; transform: translateY(-2px); }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BodyFlow — Платформа для фитнес-тренировок</title>
+  <style>
+    :root {
+      --bg: #f6fff8;
+      --panel: rgba(255, 255, 255, 0.78);
+      --panel-strong: rgba(255, 255, 255, 0.94);
+      --panel-soft: rgba(241, 251, 243, 0.92);
+      --line: rgba(76, 130, 95, 0.14);
+      --text: #173328;
+      --muted: #617c70;
+      --accent: #32a36f;
+      --accent-2: #8bd46e;
+      --accent-3: #ffc857;
+      --accent-4: #5fc7b8;
+      --shadow: 0 18px 45px rgba(34, 91, 63, 0.10);
+      --shadow-strong: 0 26px 55px rgba(34, 91, 63, 0.16);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(139, 212, 110, 0.20), transparent 34%),
+        radial-gradient(circle at top right, rgba(95, 199, 184, 0.16), transparent 26%),
+        linear-gradient(180deg, #f6fff8 0%, #effaf1 52%, #fbfffc 100%);
+      min-height: 100vh;
+      background-size: 140% 140%, 140% 140%, 100% 100%;
+      animation: bgShift 16s ease-in-out infinite;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
+    }
+
+    .container {
+      width: min(1200px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      backdrop-filter: blur(14px);
+      background: rgba(247, 255, 249, 0.72);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    .brand-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: var(--shadow);
+      font-size: 20px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.25s ease;
+      position: relative;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-links a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -6px;
+      width: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 0.28s ease;
+    }
+
+    .nav-links a:hover::after { width: 100%; }
+
+    .hero {
+      padding: 72px 0 34px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 28px;
+      align-items: center;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(50, 163, 111, 0.10);
+      border: 1px solid rgba(50, 163, 111, 0.18);
+      color: #2f7f59;
+      font-size: 14px;
+      margin-bottom: 18px;
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.08s forwards;
+    }
+
+    h1 {
+      margin: 0 0 18px;
+      font-size: clamp(36px, 5vw, 64px);
+      line-height: 1.03;
+      letter-spacing: -1.3px;
+    }
+
+    .hero h1 {
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.16s forwards;
+    }
+
+    .hero p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.7;
+      max-width: 720px;
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.24s forwards;
+    }
+
+    .actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 26px;
+    }
+
+    .hero .actions {
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.32s forwards;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary {
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #57b88d);
+      box-shadow: 0 16px 38px rgba(50, 163, 111, 0.24);
+      animation: pulseGlow 2.8s ease-in-out infinite;
+    }
+
+    .btn-primary:hover,
+    .btn-secondary:hover {
+      transform: translateY(-3px);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(255,255,255,0.7);
+      border: 1px solid var(--line);
+    }
+
+    .btn::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 45%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+      transform: translateX(-140%);
+    }
+
+    .btn:hover::after {
+      animation: shimmer 0.9s ease;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.40s forwards;
+    }
+
+    .stat,
+    .feature,
+    .role,
+    .tip,
+    .gallery-card,
+    .showcase-card,
+    .showcase-mockup,
+    .nutrition-card,
+    .plan-card,
+    .testimonial,
+    .cta-box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .stat {
+      padding: 18px;
+      min-height: 188px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      animation: cardGlow 5.2s ease-in-out infinite;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 6px;
+      line-height: 1.2;
+      white-space: normal;
+      max-width: 12ch;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .hero-card {
+      position: relative;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(239, 250, 241, 0.98));
+      border-radius: 30px;
+      padding: 18px;
+      overflow: hidden;
+      box-shadow: var(--shadow-strong);
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) 0.24s forwards, cardGlow 5.2s ease-in-out infinite;
+      transform-style: preserve-3d;
+      will-change: transform;
+      transition: transform 0.35s ease;
+    }
+
+    .hero-image {
+      border-radius: 22px;
+      overflow: hidden;
+      height: 470px;
+      position: relative;
+    }
+
+    .hero-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.02);
+      transition: transform 0.7s ease;
+      filter: saturate(1.02);
+    }
+
+    .hero-card:hover .hero-image img {
+      transform: scale(1.07);
+    }
+
+    .floating-panel {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 22px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      animation: floatY 5.2s ease-in-out infinite;
+    }
+
+    .overlay-card {
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(76, 130, 95, 0.12);
+      border-radius: 18px;
+      padding: 14px 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 28px rgba(34, 91, 63, 0.08);
+    }
+
+    .overlay-card strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 6px;
+    }
+
+    .overlay-card span {
+      color: #4b695d;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .overlay-card:first-child { animation: floatY 4.8s ease-in-out infinite; }
+    .overlay-card:last-child { animation: floatY 5.6s ease-in-out infinite; }
+
+    section {
+      padding: 30px 0;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: clamp(28px, 3vw, 40px);
+    }
+
+    .section-title p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.65;
+    }
+
+    .features-grid,
+    .roles-grid,
+    .tips-grid,
+    .gallery-grid,
+    .plans-grid,
+    .testimonials-grid,
+    .showcase-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .features-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .roles-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .tips-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .plans-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .testimonials-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .showcase-grid { grid-template-columns: 1.1fr 0.9fr; align-items: stretch; }
+
+    .feature,
+    .role,
+    .tip,
+    .showcase-card,
+    .plan-card,
+    .testimonial {
+      padding: 22px;
+      animation: cardGlow 5.2s ease-in-out infinite;
+    }
+
+    .icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, rgba(50,163,111,0.14), rgba(139,212,110,0.20));
+      border: 1px solid rgba(50,163,111,0.12);
+      transition: transform 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .feature h3,
+    .role h3,
+    .tip h3,
+    .gallery-card h3,
+    .showcase-card h3,
+    .plan-card h3,
+    .testimonial h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .feature p,
+    .role p,
+    .tip p,
+    .gallery-card p,
+    .showcase-card p,
+    .plan-card p,
+    .testimonial p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    .role ul,
+    .plan-list {
+      margin: 12px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .gallery-card {
+      padding: 0;
+      overflow: hidden;
+      min-height: 420px;
+      height: 420px;
+      position: relative;
+      animation: cardGlow 5.2s ease-in-out infinite;
+    }
+
+    .gallery-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.8s cubic-bezier(.22,1,.36,1);
+    }
+
+    .gallery-content {
+      position: absolute;
+      inset: auto 18px 18px 18px;
+      background: rgba(255, 255, 255, 0.80);
+      border: 1px solid rgba(76, 130, 95, 0.12);
+      border-radius: 18px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .highlight {
+      color: var(--text);
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .nutrition {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .nutrition-card {
+      border-radius: 24px;
+      overflow: hidden;
+      animation: cardGlow 5.2s ease-in-out infinite;
+    }
+
+    .nutrition-image {
+      height: 100%;
+      min-height: 340px;
+    }
+
+    .nutrition-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.8s cubic-bezier(.22,1,.36,1);
+    }
+
+    .nutrition-content {
+      padding: 24px;
+    }
+
+    .nutrition-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .nutrition-item {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(245, 252, 247, 0.96);
+      border: 1px solid rgba(76, 130, 95, 0.10);
+    }
+
+    .nutrition-item strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .nutrition-item span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .showcase-card {
+      min-height: 100%;
+    }
+
+    .showcase-mockup {
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(242, 252, 245, 0.98));
+      border: 1px solid rgba(76, 130, 95, 0.12);
+      border-radius: 22px;
+      padding: 18px;
+      overflow: hidden;
+      min-height: 100%;
+      animation: cardGlow 5.2s ease-in-out infinite;
+      transform-style: preserve-3d;
+      will-change: transform;
+      transition: transform 0.35s ease;
+    }
+
+    .mockup-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 10px;
+    }
+
+    .mockup-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .mockup-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(50,163,111,0.22);
+      display: inline-block;
+    }
+
+    .mockup-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .mockup-box {
+      background: rgba(245, 252, 247, 0.95);
+      border: 1px solid rgba(76, 130, 95, 0.10);
+      border-radius: 18px;
+      padding: 16px;
+      transition: transform 0.35s ease, background 0.35s ease;
+    }
+
+    .mockup-box.large {
+      grid-column: span 2;
+    }
+
+    .mini-progress {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .mini-progress div {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(50, 163, 111, 0.10);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .mini-progress div span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      transform-origin: left center;
+      animation: fadeBar 1.6s cubic-bezier(.22,1,.36,1);
+    }
+
+    .plan-card {
+      animation: cardGlow 5.2s ease-in-out infinite;
+      transition: transform 0.4s cubic-bezier(.22,1,.36,1), box-shadow 0.4s ease, border-color 0.3s ease;
+    }
+
+    .plan-card.featured {
+      border-color: rgba(50, 163, 111, 0.24);
+      box-shadow: 0 24px 60px rgba(50, 163, 111, 0.16);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(233, 248, 237, 0.98));
+    }
+
+    .plan-badge {
+      display: inline-flex;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(50, 163, 111, 0.10);
+      border: 1px solid rgba(50, 163, 111, 0.18);
+      color: #2d7d58;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .price {
+      font-size: 34px;
+      font-weight: 800;
+      margin: 8px 0 6px;
+    }
+
+    .price small {
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .testimonial {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .testimonial-meta {
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid rgba(76, 130, 95, 0.08);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .cta {
+      padding: 36px 0 72px;
+    }
+
+    .cta-box {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+      padding: 22px;
+      animation: cardGlow 5.2s ease-in-out infinite;
+    }
+
+    .cta-box::before {
+      content: "";
+      position: absolute;
+      inset: auto -60px -60px auto;
+      width: 240px;
+      height: 240px;
+      background: radial-gradient(circle, rgba(139, 212, 110, 0.30), transparent 65%);
+      pointer-events: none;
+    }
+
+    .cta-box h2 {
+      margin: 0 0 12px;
+      font-size: clamp(30px, 4vw, 42px);
+    }
+
+    .cta-box p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .footer {
+      border-top: 1px solid var(--line);
+      padding: 22px 0 34px;
+      color: var(--muted);
+      font-size: 14px;
+      background: rgba(255,255,255,0.38);
+      backdrop-filter: blur(10px);
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+
+    .revealed {
+      animation: fadeUp 0.9s cubic-bezier(.22,1,.36,1) forwards;
+    }
+
+    .hover-lift {
+      transition: transform 0.4s cubic-bezier(.22,1,.36,1), box-shadow 0.4s ease, border-color 0.3s ease;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    .hover-lift:hover {
+      transform: translateY(-10px) scale(1.015);
+      box-shadow: 0 28px 70px rgba(34, 91, 63, 0.18);
+      border-color: rgba(50, 163, 111, 0.22);
+    }
+
+    .hover-lift:hover img {
+      transform: scale(1.08);
+    }
+
+    .feature:hover .icon,
+    .role:hover .icon,
+    .tip:hover .icon,
+    .showcase-card:hover .icon,
+    .plan-card:hover .icon {
+      transform: scale(1.08) rotate(-4deg);
+      box-shadow: 0 14px 30px rgba(50, 163, 111, 0.16);
+    }
+
+    .showcase-mockup:hover .mockup-box {
+      transform: translateY(-3px);
+      background: rgba(238, 250, 242, 0.98);
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes floatY {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 16px 38px rgba(50, 163, 111, 0.22); }
+      50% { box-shadow: 0 20px 48px rgba(139, 212, 110, 0.34); }
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-140%); }
+      100% { transform: translateX(180%); }
+    }
+
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes cardGlow {
+      0%, 100% { box-shadow: 0 18px 45px rgba(34, 91, 63, 0.10); }
+      50% { box-shadow: 0 24px 52px rgba(50, 163, 111, 0.16); }
+    }
+
+    @keyframes fadeBar {
+      from { transform: scaleX(0); opacity: 0.2; }
+      to { transform: scaleX(1); opacity: 1; }
+    }
+
+    @media (max-width: 1080px) {
+      .hero-grid,
+      .features-grid,
+      .roles-grid,
+      .tips-grid,
+      .gallery-grid,
+      .nutrition,
+      .cta-box,
+      .floating-panel,
+      .showcase-grid,
+      .plans-grid,
+      .testimonials-grid,
+      .mockup-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .gallery-card {
+        min-height: 320px;
+        height: 320px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .stats-row { grid-template-columns: 1fr; }
+      .nav-inner { align-items: flex-start; flex-direction: column; }
+      .section-title { align-items: flex-start; flex-direction: column; }
+      .hero { padding-top: 42px; }
+      .hero-image { height: 360px; }
+      h1 { letter-spacing: -0.8px; }
+      .floating-panel { position: static; margin-top: 14px; }
+      .btn-primary { animation-duration: 3.6s; }
+    }
+  </style>
 </head>
 <body>
-<div class="container">
-  <div class="logo">Fit<span>Flow</span></div>
-  <div class="subtitle">SaaS платформа для управления фитнес-тренировками</div>
-  <div class="status"><div class="dot"></div> Система работает</div>
-
-  <div class="cards">
-    <div class="card">
-      <div class="card-icon">🏋️</div>
-      <div class="card-title">Тренировки</div>
-      <div class="card-desc">Персональные программы для каждого клиента</div>
+  <nav class="nav">
+    <div class="container nav-inner">
+      <div class="brand">
+        <div class="brand-badge">💪</div>
+        <div>
+          <div>BodyFlow</div>
+          <small style="color: var(--muted); font-weight: 500;">Двигайся красиво. Живи в балансе.</small>
+        </div>
+      </div>
+      <div class="nav-links">
+        <a href="#about">О платформе</a>
+        <a href="#features">Возможности</a>
+        <a href="#roles">Для кого</a>
+        <a href="#showcase">Интерфейс</a>
+        <a href="#plans">Тарифы</a>
+        <a href="#tips">Советы</a>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-icon">📅</div>
-      <div class="card-title">Расписание</div>
-      <div class="card-desc">Планирование и учёт посещаемости</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">📈</div>
-      <div class="card-title">Прогресс</div>
-      <div class="card-desc">Отслеживание результатов клиентов</div>
-    </div>
-  </div>
+  </nav>
 
-  <a href="/docs" class="btn">📖 Открыть API документацию</a>
-</div>
+  <header class="hero container" id="about">
+    <div class="hero-grid">
+      <div>
+        <div class="tag">Онлайн-платформа для фитнеса, привычек и прогресса</div>
+        <h1>Тренировки, питание и прогресс — в одном ритме BodyFlow</h1>
+        <p>
+          BodyFlow помогает легко планировать занятия, отслеживать прогресс и выстраивать здоровые привычки каждый день. Платформа объединяет тренировки, питание и мотивацию в одном современном пространстве, которое выглядит стильно и ощущается по-настоящему живым.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#features">Посмотреть возможности</a>
+          <a class="btn btn-secondary" href="#nutrition">Открыть питание</a>
+        </div>
+        <div class="stats-row">
+          <div class="stat hover-lift">
+            <strong>Персональный ритм</strong>
+            <span>Удобное расписание занятий и понятное управление своей активностью.</span>
+          </div>
+          <div class="stat hover-lift">
+            <strong>Умный прогресс</strong>
+            <span>История тренировок, динамика и визуальный контроль результатов.</span>
+          </div>
+          <div class="stat hover-lift">
+            <strong>Ежедневная мотивация</strong>
+            <span>Полезные советы, привычки и поддержка на пути к цели.</span>
+          </div>
+        </div>
+      </div>
 
-<script>
-  // Проверяем статус API
-  fetch('/api/health')
-    .then(r => r.json())
-    .then(d => {
-      if (d.status === 'ok') {
-        document.querySelector('.status').innerHTML =
-          '<div class="dot"></div> API работает · ' + d.service;
-      }
-    })
-    .catch(() => {
-      document.querySelector('.status').style.background = '#FFF0F3';
-      document.querySelector('.status').style.color = '#FF4D6D';
-      document.querySelector('.status').innerHTML = '⚠️ API недоступен';
+      <div class="hero-card">
+        <div class="hero-image">
+          <img src="https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=1200&q=80" alt="Пара тренируется с гирями" />
+        </div>
+        <div class="floating-panel">
+          <div class="overlay-card">
+            <strong>Сегодняшний план</strong>
+            <span>Кардио, силовая тренировка и короткая растяжка в одном удобном расписании.</span>
+          </div>
+          <div class="overlay-card">
+            <strong>Дневной фокус</strong>
+            <span>Двигайся стабильно, пей воду, следи за питанием и отмечай прогресс.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="container reveal" id="features">
+    <div class="section-title reveal">
+      <div>
+        <h2>Ключевые возможности платформы</h2>
+        <p>Платформа создана для комфортной повседневной работы с тренировками, прогрессом и здоровыми привычками без перегруженного интерфейса.</p>
+      </div>
+    </div>
+
+    <div class="features-grid">
+      <article class="feature hover-lift reveal">
+        <div class="icon">📅</div>
+        <h3>Расписание и запись</h3>
+        <p>Удобный просмотр занятий, времени тренировок и быстрая запись в пару кликов.</p>
+      </article>
+      <article class="feature hover-lift reveal">
+        <div class="icon">👩‍🏫</div>
+        <h3>Кабинет тренера</h3>
+        <p>Гибкое управление занятиями, программами и участниками в одном рабочем пространстве.</p>
+      </article>
+      <article class="feature hover-lift reveal">
+        <div class="icon">📈</div>
+        <h3>Отслеживание прогресса</h3>
+        <p>Визуальная динамика активности, история тренировок и мотивация двигаться дальше.</p>
+      </article>
+      <article class="feature hover-lift reveal">
+        <div class="icon">🥗</div>
+        <h3>Дневник питания</h3>
+        <p>Контроль питания, заметки о рационе и удобное сопровождение ежедневных привычек.</p>
+      </article>
+      <article class="feature hover-lift reveal">
+        <div class="icon">💡</div>
+        <h3>Полезные советы каждый день</h3>
+        <p>Короткие рекомендации по активности, восстановлению, воде, сну и балансу питания.</p>
+      </article>
+      <article class="feature hover-lift reveal">
+        <div class="icon">🔔</div>
+        <h3>Напоминания и цели</h3>
+        <p>Мягкие уведомления помогают не забывать о тренировках, воде и личных целях.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal" id="roles">
+    <div class="section-title reveal">
+      <div>
+        <h2>Для кого создан BodyFlow</h2>
+        <p>Платформа объединяет тренеров и клиентов в одном цифровом пространстве, где удобно планировать занятия и двигаться к результату.</p>
+      </div>
+    </div>
+
+    <div class="roles-grid">
+      <article class="role hover-lift reveal">
+        <div class="icon">🏋️</div>
+        <h3>Для тренеров</h3>
+        <p>Удобный инструмент для создания занятий, ведения расписания и сопровождения клиентов.</p>
+        <ul>
+          <li>создание и редактирование тренировок</li>
+          <li>ведение групповых и персональных занятий</li>
+          <li>контроль записей и посещаемости</li>
+          <li>удобная организация рабочего процесса</li>
+        </ul>
+      </article>
+      <article class="role hover-lift reveal">
+        <div class="icon">🧍</div>
+        <h3>Для клиентов</h3>
+        <p>Простая и приятная среда для записи на занятия, контроля питания и наблюдения за своим прогрессом.</p>
+        <ul>
+          <li>просмотр доступных тренировок</li>
+          <li>запись на занятия в удобное время</li>
+          <li>ведение личного дневника активности</li>
+          <li>отслеживание результатов и привычек</li>
+        </ul>
+      </article>
+      <article class="role hover-lift reveal">
+        <div class="icon">🌿</div>
+        <h3>Для себя и своего ритма</h3>
+        <p>Подходит людям, которые тренируются самостоятельно и хотят просто следить за привычками, прогрессом и питанием.</p>
+        <ul>
+          <li>личные цели без тренера</li>
+          <li>учёт активности и самочувствия</li>
+          <li>контроль питания и режима</li>
+          <li>визуальная мотивация каждый день</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal">
+    <div class="section-title reveal">
+      <div>
+        <h2>Спорт, энергия и стиль жизни</h2>
+        <p>Визуальная часть сервиса поддерживает настроение бренда: движение, дисциплина, здоровье и современный подход к фитнесу.</p>
+      </div>
+    </div>
+
+    <div class="gallery-grid">
+      <article class="gallery-card hover-lift reveal">
+        <img src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=1200&q=80" alt="Совместная тренировка с гантелями" />
+        <div class="gallery-content">
+          <span class="highlight">Тренируйся с удовольствием</span>
+          <p>Чёткая структура занятий и вдохновляющий интерфейс помогают не выпадать из режима.</p>
+        </div>
+      </article>
+      <article class="gallery-card hover-lift reveal">
+        <img src="https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&w=1200&q=80" alt="Мужчина и женщина делают упражнения" />
+        <div class="gallery-content">
+          <span class="highlight">Сила и выносливость</span>
+          <p>Подходит для разных форматов тренировок и совместной мотивации.</p>
+        </div>
+      </article>
+      <article class="gallery-card hover-lift reveal">
+        <img src="https://images.unsplash.com/photo-1599058917765-a780eda07a3e?auto=format&fit=crop&w=1200&q=80" alt="Совместная тренировка и баланс" />
+        <div class="gallery-content">
+          <span class="highlight">Баланс и восстановление</span>
+          <p>Не только тренировки, но и забота о самочувствии.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal" id="showcase">
+    <div class="section-title reveal">
+      <div>
+        <h2>Интерфейс, похожий на реальный сервис</h2>
+        <p>Чтобы проект выглядел ближе к настоящему коммерческому продукту, платформа показывает не только описание, но и пример личного кабинета с активностью, планом недели и целями.</p>
+      </div>
+    </div>
+
+    <div class="showcase-grid">
+      <article class="showcase-card hover-lift reveal">
+        <div class="icon">✨</div>
+        <h3>Личный кабинет пользователя</h3>
+        <p>На главном экране можно видеть предстоящие тренировки, прогресс по неделе, цели, напоминания и ключевые привычки. Такой блок делает сайт более живым и похожим на настоящий SaaS-продукт.</p>
+        <div class="nutrition-list" style="margin-top: 18px;">
+          <div class="nutrition-item">
+            <strong>Следующая тренировка</strong>
+            <span>Силовая тренировка · Сегодня · 19:00</span>
+          </div>
+          <div class="nutrition-item">
+            <strong>Цель недели</strong>
+            <span>3 тренировки, 8 000 шагов в день и стабильный питьевой режим.</span>
+          </div>
+          <div class="nutrition-item">
+            <strong>Текущий фокус</strong>
+            <span>Баланс между нагрузкой, восстановлением и ежедневным питанием.</span>
+          </div>
+        </div>
+      </article>
+      <article class="showcase-mockup hover-lift reveal">
+        <div class="mockup-top">
+          <div class="mockup-dots"><span></span><span></span><span></span></div>
+          <small style="color: var(--muted);">Dashboard Preview</small>
+        </div>
+        <div class="mockup-grid">
+          <div class="mockup-box large">
+            <strong style="display:block; margin-bottom:8px;">Прогресс за неделю</strong>
+            <div class="mini-progress">
+              <div><span style="width: 82%;"></span></div>
+              <div><span style="width: 64%;"></span></div>
+              <div><span style="width: 91%;"></span></div>
+            </div>
+          </div>
+          <div class="mockup-box">
+            <strong style="display:block; margin-bottom:8px;">Занятия</strong>
+            <p style="margin:0; color: var(--muted);">12 в этом месяце</p>
+          </div>
+          <div class="mockup-box">
+            <strong style="display:block; margin-bottom:8px;">Питание</strong>
+            <p style="margin:0; color: var(--muted);">5 дней подряд</p>
+          </div>
+          <div class="mockup-box large">
+            <strong style="display:block; margin-bottom:8px;">Ближайшие цели</strong>
+            <p style="margin:0; color: var(--muted); line-height:1.65;">Закрыть 3 тренировки на неделе, поддерживать водный баланс и лечь спать до 23:30.</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal" id="nutrition">
+    <div class="section-title reveal">
+      <div>
+        <h2>Дневник питания</h2>
+        <p>Отдельный блок помогает выстраивать полезные привычки и видеть связь между рационом, самочувствием и спортивным прогрессом.</p>
+      </div>
+    </div>
+
+    <div class="nutrition">
+      <article class="nutrition-card nutrition-image hover-lift reveal">
+        <img src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=1200&q=80" alt="Полезное питание и свежие продукты" />
+      </article>
+      <article class="nutrition-card hover-lift reveal">
+        <div class="nutrition-content">
+          <h3 style="margin: 0 0 12px; font-size: 26px;">Контроль рациона без лишней сложности</h3>
+          <p style="margin: 0; color: var(--muted); line-height: 1.7;">
+            Пользователь может отмечать приёмы пищи, вести заметки о питании и лучше понимать,
+            как ежедневные привычки влияют на энергию, восстановление и результат тренировок.
+          </p>
+          <div class="nutrition-list">
+            <div class="nutrition-item">
+              <strong>Ежедневные записи</strong>
+              <span>Фиксируй основные приёмы пищи и наблюдай за регулярностью питания.</span>
+            </div>
+            <div class="nutrition-item">
+              <strong>Полезные заметки</strong>
+              <span>Добавляй комментарии о самочувствии, насыщении и пищевых привычках.</span>
+            </div>
+            <div class="nutrition-item">
+              <strong>Баланс и осознанность</strong>
+              <span>Сосредоточься не на жёстких ограничениях, а на стабильности и качестве рациона.</span>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal" id="tips">
+    <div class="section-title reveal">
+      <div>
+        <h2>Полезные советы каждый день</h2>
+        <p>Небольшие ежедневные рекомендации делают платформу живой, вовлекающей и по-настоящему полезной в обычной жизни.</p>
+      </div>
+    </div>
+
+    <div class="tips-grid">
+      <article class="tip hover-lift reveal">
+        <div class="icon">💧</div>
+        <h3>Пей воду регулярно</h3>
+        <p>Небольшое напоминание в течение дня помогает поддерживать активность и общее самочувствие.</p>
+      </article>
+      <article class="tip hover-lift reveal">
+        <div class="icon">😴</div>
+        <h3>Не забывай про восстановление</h3>
+        <p>Качественный сон и отдых так же важны, как сама тренировка и дисциплина.</p>
+      </article>
+      <article class="tip hover-lift reveal">
+        <div class="icon">🥙</div>
+        <h3>Ставь акцент на баланс</h3>
+        <p>Стабильные привычки в питании и умеренность чаще работают лучше, чем крайности.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal" id="plans">
+    <div class="section-title reveal">
+      <div>
+        <h2>Тарифы</h2>
+        <p>Планы выглядят мягко, современно и одинаково живо — теперь анимация есть у всех карточек, а палитра ассоциируется с wellness и здоровым образом жизни.</p>
+      </div>
+    </div>
+
+    <div class="plans-grid">
+      <article class="plan-card hover-lift reveal">
+        <div class="plan-badge">Старт</div>
+        <h3>Free</h3>
+        <div class="price">0 <small>/ месяц</small></div>
+        <p>Для тех, кто хочет начать следить за тренировками и своими привычками.</p>
+        <ul class="plan-list">
+          <li>личный прогресс</li>
+          <li>дневник питания</li>
+          <li>ежедневные советы</li>
+        </ul>
+      </article>
+      <article class="plan-card featured hover-lift reveal">
+        <div class="plan-badge">Популярный</div>
+        <h3>Pro</h3>
+        <div class="price">$12 <small>/ месяц</small></div>
+        <p>Подходит для активных пользователей и персональной работы с планом тренировок.</p>
+        <ul class="plan-list">
+          <li>расширенная аналитика</li>
+          <li>цели и напоминания</li>
+          <li>персональные программы</li>
+        </ul>
+      </article>
+      <article class="plan-card hover-lift reveal">
+        <div class="plan-badge">Для специалистов</div>
+        <h3>Coach</h3>
+        <div class="price">$29 <small>/ месяц</small></div>
+        <p>Для тренеров, которым важно управлять занятиями и вести клиентов в одном месте.</p>
+        <ul class="plan-list">
+          <li>ведение групп и клиентов</li>
+          <li>расписание и записи</li>
+          <li>рабочее пространство тренера</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="container reveal">
+    <div class="section-title reveal">
+      <div>
+        <h2>Отзывы пользователей</h2>
+        <p>Ещё один элемент, который делает проект визуально ближе к настоящему продукту и усиливает ощущение живого сервиса.</p>
+      </div>
+    </div>
+
+    <div class="testimonials-grid">
+      <article class="testimonial hover-lift reveal">
+        <h3>Очень удобно для личного контроля</h3>
+        <p>Мне понравилось, что в одном месте есть и расписание, и дневник питания, и прогресс. Всё выглядит чисто и понятно.</p>
+        <div class="testimonial-meta">Алина · пользователь</div>
+      </article>
+      <article class="testimonial hover-lift reveal">
+        <h3>Хорошо организован кабинет тренера</h3>
+        <p>Легко отслеживать записи и держать перед глазами занятия на неделю. Интерфейс выглядит современно и аккуратно.</p>
+        <div class="testimonial-meta">Камран · тренер</div>
+      </article>
+      <article class="testimonial hover-lift reveal">
+        <h3>Есть мотивация возвращаться каждый день</h3>
+        <p>Мне зашёл блок с маленькими советами и визуальный прогресс. Из-за этого сервис не кажется сухим и скучным.</p>
+        <div class="testimonial-meta">Лейла · пользователь</div>
+      </article>
+    </div>
+  </section>
+
+  <section class="cta container reveal">
+    <div class="cta-box hover-lift">
+      <div>
+        <h2>BodyFlow — пространство, где фитнес становится частью красивого образа жизни</h2>
+        <p>BodyFlow объединяет тренировки, питание, привычки и мотивацию в одном современном интерфейсе, который выглядит профессионально, легко воспринимается и помогает возвращаться к своим целям каждый день.</p>
+      </div>
+      <div class="actions" style="justify-content: flex-start; margin: 0;">
+        <a class="btn btn-primary" href="#about">Наверх</a>
+        <a class="btn btn-secondary" href="#features">Все возможности</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      BodyFlow © 2026 · Онлайн-платформа для фитнеса, питания и прогресса
+    </div>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('revealed');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.reveal').forEach((el, index) => {
+      el.style.animationDelay = `${Math.min(index * 0.06, 0.38)}s`;
+      observer.observe(el);
     });
-</script>
+
+    window.addEventListener('mousemove', (e) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 8;
+      const y = (e.clientY / window.innerHeight - 0.5) * 8;
+      document.querySelectorAll('.hero-card, .showcase-mockup').forEach((card, idx) => {
+        const factor = idx === 0 ? 1 : 0.65;
+        card.style.transform = `perspective(1200px) rotateY(${x * factor}deg) rotateX(${y * -factor}deg)`;
+      });
+    });
+
+    window.addEventListener('mouseout', () => {
+      document.querySelectorAll('.hero-card, .showcase-mockup').forEach(card => {
+        card.style.transform = 'perspective(1200px) rotateY(0deg) rotateX(0deg)';
+      });
+    });
+  </script>
 </body>
 </html>
