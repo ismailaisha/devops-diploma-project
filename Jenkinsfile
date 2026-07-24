@@ -29,7 +29,7 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
-                    pip install ruff --quiet
+                    pip3 install ruff --quiet
                     ruff check services/api/app/ || true
                 '''
             }
@@ -39,7 +39,7 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    pip install -r services/api/requirements.txt --quiet
+                    pip3 install -r services/api/requirements.txt --quiet
                     echo "Tests passed"
                 '''
             }
