@@ -29,8 +29,11 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
-                    pip3 install ruff --quiet
-                    ruff check services/api/app/ || true
+                    docker run --rm \
+                    -v $(pwd):/app \
+                    -w /app \
+                    python:3.12-slim \
+                    sh -c "pip install ruff --quiet && ruff check services/api/app/ || true"
                 '''
             }
         }
@@ -39,8 +42,11 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    pip3 install -r services/api/requirements.txt --quiet
-                    echo "Tests passed"
+                    docker run --rm \
+                    -v $(pwd):/app \
+                    -w /app \
+                    python:3.12-slim \
+                    sh -c "pip install -r services/api/requirements.txt --quiet && echo Tests passed"
                 '''
             }
         }
