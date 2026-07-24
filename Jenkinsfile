@@ -33,7 +33,7 @@ pipeline {
                     -v $(pwd)/services/api:/app \
                     -w /app \
                     python:3.12-slim \
-                    sh -c "pip install ruff --quiet && ruff check app/ || true"
+                    sh -c "pip install ruff --quiet --root-user-action=ignore && ruff check app/ || true"
                 '''
             }
         }
@@ -42,11 +42,11 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    docker run --rm \
-                        -v $(pwd)/services/api:/app \
-                        -w /app \
-                        python:3.12-slim \
-                        sh -c "pip install -r requirements.txt --quiet && echo Tests passed"
+                  docker run --rm \
+                    -v $(pwd)/services/api:/app \
+                    -w /app \
+                    python:3.12-slim \
+                    sh -c "pip install -r requirements.txt --quiet --root-user-action=ignore && echo Tests passed"
                 '''
             }
         }
