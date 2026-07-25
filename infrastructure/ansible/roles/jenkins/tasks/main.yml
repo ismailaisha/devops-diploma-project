@@ -101,7 +101,7 @@
     proto: tcp
   tags: firewall
 
-# ─── Начальный пароль Jenkins ────────────
+# Начальный пароль Jenkins
 
 - name: Wait for Jenkins to start
   wait_for:
