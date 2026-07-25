@@ -62,7 +62,7 @@ pipeline {
             }
         }
 
-        // пушим образы на docker hub
+        // пушим образы на dockerhub
         stage('Push') {
             steps {
                 withCredentials([usernamePassword(
