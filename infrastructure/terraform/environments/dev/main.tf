@@ -220,6 +220,10 @@ resource "aws_instance" "app_server" {
     Project     = var.project_name
     Role        = "app"
   }
+  
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # ─────────────────────────────────────────
@@ -242,6 +246,10 @@ resource "aws_instance" "jenkins" {
     Environment = var.environment
     Project     = var.project_name
     Role        = "jenkins"
+  }
+  
+  lifecycle {
+    ignore_changes = [ami]
   }
 }
 
