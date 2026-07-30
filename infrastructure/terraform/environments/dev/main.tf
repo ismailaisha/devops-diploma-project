@@ -18,6 +18,16 @@ data "http" "my_ip" {
   url = "https://ipv4.icanhazip.com"
 }
 
+data "http" "github_ips" {
+  url = "https://api.github.com/meta"
+}
+
+locals {
+  github_webhook_ips = [
+    for ip in jsondecode(data.http.github_ips.response_body).hooks : ip
+    if !can(regex(":", ip))
+  ]
+}
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -105,7 +115,7 @@ resource "aws_security_group" "app_server" {
     description = "FastAPI"
   }
 
-  # SSH — только с твоего IP
+  # SSH — только с хостового IP
   ingress {
     from_port   = 22
     to_port     = 22
@@ -113,6 +123,15 @@ resource "aws_security_group" "app_server" {
     cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
     description = "SSH only from my IP"
   }
+
+  # SSH с Jenkins сервера для деплоя
+ingress {
+  from_port       = 22
+  to_port         = 22
+  protocol        = "tcp"
+  security_groups = [aws_security_group.jenkins.id]
+  description     = "SSH from Jenkins for deployment"
+}
 
   # WireGuard VPN
   ingress {
@@ -163,6 +182,14 @@ resource "aws_security_group" "jenkins" {
     protocol    = "tcp"
     cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
     description = "SSH only from my IP"
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = local.github_webhook_ips
+    description = "GitHub webhook - dynamic from GitHub API"
   }
 
   # WireGuard VPN
@@ -247,7 +274,7 @@ resource "aws_instance" "jenkins" {
     Project     = var.project_name
     Role        = "jenkins"
   }
-  
+
   lifecycle {
     ignore_changes = [ami]
   }
