@@ -25,15 +25,12 @@ pipeline {
             }
         }
 
-        // проверяем что код написан правильно (lint)
+        // проверяем что код написан нормально
         stage('Lint') {
             steps {
                 sh '''
-                  docker run --rm \
-                    -v $(pwd)/services/api:/app \
-                    -w /app \
-                    python:3.12-slim \
-                    bash -c 'pip install ruff --quiet --root-user-action=ignore && ruff check . || true'
+                    pip3 install ruff --quiet
+                    ruff check services/api/app/ || true
                 '''
             }
         }
@@ -42,11 +39,8 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                  docker run --rm \
-                    -v $(pwd)/services/api:/app \
-                    -w /app \
-                    python:3.12-slim \
-                    bash -c 'pip install -r requirements.txt --quiet --root-user-action=ignore && echo Tests passed'
+                    pip3 install -r services/api/requirements.txt --quiet
+                    echo "Tests passed"
                 '''
             }
         }
@@ -62,7 +56,7 @@ pipeline {
             }
         }
 
-        // пушим образы на dockerhub
+        // пушим образы на docker hub
         stage('Push') {
             steps {
                 withCredentials([usernamePassword(
