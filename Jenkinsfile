@@ -32,7 +32,13 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh 'docker run --rm -v $(pwd)/services/api:/app -w /app python:3.12-slim bash -c "pip install -r requirements.txt --quiet && echo Tests passed"'
+                  sh '''
+                    docker run --rm \
+                    -v $(pwd)/services/api:/app \
+                    -w /app \
+                    python:3.12-slim \
+                    bash -c "pip install -r requirements.txt --quiet && echo Tests passed"
+        '''
             }
         }
 
