@@ -29,6 +29,9 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
+                    which python3 || apt-get install -y python3-pip
+                    python3 -m pip install ruff --quiet
+                    python3 -m ruff check services/api/app/ || true
                     pip3 install ruff --quiet
                     ruff check services/api/app/ || true
                 '''
@@ -39,7 +42,7 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    pip3 install -r services/api/requirements.txt --quiet
+                    python3 -m pip install -r services/api/requirements.txt --quiet
                     echo "Tests passed"
                 '''
             }
