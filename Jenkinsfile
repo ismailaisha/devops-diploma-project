@@ -33,7 +33,7 @@ pipeline {
                     -v $(pwd)/services/api:/app \
                     -w /app \
                     python:3.12-slim \
-                    bash -c "pip install ruff --quiet --root-user-action=ignore; ruff check app/ || true"
+                    bash -c 'pip install ruff --quiet --root-user-action=ignore && ruff check app/ || true'
                 '''
             }
         }
@@ -46,7 +46,7 @@ pipeline {
                     -v $(pwd)/services/api:/app \
                     -w /app \
                     python:3.12-slim \
-                    bash -c "pip install -r requirements.txt --quiet --root-user-action=ignore; echo Tests passed"
+                    bash -c 'pip install -r requirements.txt --quiet --root-user-action=ignore && echo Tests passed'
                 '''
             }
         }
