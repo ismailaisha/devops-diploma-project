@@ -11,7 +11,6 @@ pipeline {
 
     stages {
 
-        // скачиваем код и запоминаем версию коммита
         stage('Checkout') {
             steps {
                 checkout scm
@@ -25,30 +24,18 @@ pipeline {
             }
         }
 
-        // проверяем что код написан нормально
         stage('Lint') {
             steps {
-                sh '''
-                    which python3 || apt-get install -y python3-pip
-                    python3 -m pip install ruff --quiet
-                    python3 -m ruff check services/api/app/ || true
-                    pip3 install ruff --quiet
-                    ruff check services/api/app/ || true
-                '''
+                sh 'docker run --rm -v $(pwd)/services/api:/app -w /app python:3.12-slim bash -c "pip install ruff --quiet && ruff check . || true"'
             }
         }
 
-        // запускаем тесты
         stage('Test') {
             steps {
-                sh '''
-                    python3 -m pip install -r services/api/requirements.txt --quiet
-                    echo "Tests passed"
-                '''
+                sh 'docker run --rm -v $(pwd)/services/api:/app -w /app python:3.12-slim bash -c "pip install -r requirements.txt --quiet && echo Tests passed"'
             }
         }
 
-        // собираем docker образы с тегом текущего коммита
         stage('Build') {
             steps {
                 script {
@@ -59,7 +46,6 @@ pipeline {
             }
         }
 
-        // пушим образы на docker hub
         stage('Push') {
             steps {
                 withCredentials([usernamePassword(
@@ -77,7 +63,6 @@ pipeline {
             }
         }
 
-        // заходим на сервер и обновляем контейнеры
         stage('Deploy') {
             steps {
                 sshagent(['app-server-ssh']) {
