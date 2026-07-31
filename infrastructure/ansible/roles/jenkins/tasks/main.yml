@@ -76,10 +76,12 @@
     docker run -d \
       --name jenkins \
       --restart unless-stopped \
+      --group-add 998 \
       -p 8080:8080 \
       -p 50000:50000 \
       -v /opt/jenkins:/var/jenkins_home \
       -v /var/run/docker.sock:/var/run/docker.sock \
+      -v /usr/bin/docker:/usr/bin/docker \
       jenkins/jenkins:lts
   args:
     creates: /opt/jenkins/config.xml
