@@ -10,11 +10,8 @@ pipeline {
     }
 
     stages {
-
-        // скачиваем код и запоминаем версию коммита
         stage('Checkout') {
             steps {
-                checkout scm
                 script {
                     env.GIT_HASH = sh(
                         script: 'git rev-parse --short HEAD',
@@ -25,7 +22,6 @@ pipeline {
             }
         }
 
-        // проверяем что код написан правильно (lint)
         stage('Lint') {
             steps {
                 sh '''
@@ -38,7 +34,6 @@ pipeline {
             }
         }
 
-        // запускаем тесты
         stage('Test') {
             steps {
                 sh '''
@@ -51,7 +46,6 @@ pipeline {
             }
         }
 
-        // собираем docker образы с тегом текущего коммита
         stage('Build') {
             steps {
                 script {
@@ -62,7 +56,6 @@ pipeline {
             }
         }
 
-        // пушим образы на dockerhub
         stage('Push') {
             steps {
                 withCredentials([usernamePassword(
@@ -80,7 +73,6 @@ pipeline {
             }
         }
 
-        // заходим на сервер и обновляем контейнеры
         stage('Deploy') {
             steps {
                 sshagent(['app-server-ssh']) {
