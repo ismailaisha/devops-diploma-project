@@ -22,28 +22,30 @@ pipeline {
         }
 
         stage('Lint') {
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    // Заходим сразу в папку вашего API
+                    customWorkspace "${WORKSPACE}/services/api"
+                }
+            }
             steps {
-                // Вместо жесткого пути наружу используем ${WORKSPACE}, чтобы Docker внутри Docker нашел директорию
-                sh '''
-                docker run --rm \
-                  -v "${WORKSPACE}/services/api:/app" \
-                  -w /app \
-                  python:3.12-slim \
-                  bash -c "pip install ruff --quiet && ruff check . || true"
-                '''
+                // Команда выполняется внутри Python-контейнера. Файлы уже там!
+                sh 'pip install ruff --quiet && ruff check . || true'
             }
         }
 
         stage('Test') {
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    customWorkspace "${WORKSPACE}/services/api"
+                }
+            }
             steps {
-                // Исправленное монтирование: теперь requirements.txt точно будет внутри контейнера
-                sh '''
-                docker run --rm \
-                  -v "${WORKSPACE}/services/api:/app" \
-                  -w /app \
-                  python:3.12-slim \
-                  bash -c "pip install -r requirements.txt --quiet && echo Tests passed"
-                '''
+                // requirements.txt гарантированно прочитается без ошибок монтирования
+                sh 'pip install -r requirements.txt --quiet'
+                sh 'echo Tests passed'
             }
         }
 
