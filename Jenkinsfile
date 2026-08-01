@@ -22,37 +22,34 @@ pipeline {
         }
 
         stage('Lint') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    // Заходим сразу в папку вашего API приложения
-                    customWorkspace "${WORKSPACE}/services/api"
-                }
-            }
             steps {
-                // Выполняется внутри контейнера, файлы гарантированно на месте
-                sh 'pip install ruff --quiet && ruff check . || true'
+                // Вместо жесткого пути наружу используем ${WORKSPACE}, чтобы Docker внутри Docker нашел директорию
+                sh '''
+                docker run --rm \
+                  -v "${WORKSPACE}/services/api:/app" \
+                  -w /app \
+                  python:3.12-slim \
+                  bash -c "pip install ruff --quiet && ruff check . || true"
+                '''
             }
         }
 
         stage('Test') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    customWorkspace "${WORKSPACE}/services/api"
-                }
-            }
             steps {
-                // requirements.txt теперь успешно прочитается
-                sh 'pip install -r requirements.txt --quiet'
-                sh 'echo Tests passed'
+                // Исправленное монтирование: теперь requirements.txt точно будет внутри контейнера
+                sh '''
+                docker run --rm \
+                  -v "${WORKSPACE}/services/api:/app" \
+                  -w /app \
+                  python:3.12-slim \
+                  bash -c "pip install -r requirements.txt --quiet && echo Tests passed"
+                '''
             }
         }
 
         stage('Build') {
             steps {
                 script {
-                    // Используем правильный контекст сборки для каждой папки
                     docker.build("${IMAGE_API}:${env.GIT_HASH}", './services/api')
                     docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker')
                     docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend')
@@ -83,7 +80,6 @@ pipeline {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} '
                         cd /opt/fitflow
-                        # Передаем новый тег в переменные окружения для docker compose (если применимо)
                         export GIT_HASH=${env.GIT_HASH}
                         docker compose pull
                         docker compose up -d
