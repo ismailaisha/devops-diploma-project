@@ -21,34 +21,7 @@ pipeline {
             }
         }
 
-        stage('Lint') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    // Заходим сразу в папку вашего API
-                    customWorkspace "${WORKSPACE}/services/api"
-                }
-            }
-            steps {
-                // Команда выполняется внутри Python-контейнера. Файлы уже там!
-                sh 'pip install ruff --quiet && ruff check . || true'
-            }
-        }
-
-        stage('Test') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    customWorkspace "${WORKSPACE}/services/api"
-                }
-            }
-            steps {
-                // requirements.txt гарантированно прочитается без ошибок монтирования
-                sh 'pip install -r requirements.txt --quiet'
-                sh 'echo Tests passed'
-            }
-        }
-
+        // ШАГ 1: Сначала собираем образы (теперь контекст сборки передается без проблем)
         stage('Build') {
             steps {
                 script {
@@ -56,6 +29,19 @@ pipeline {
                     docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker')
                     docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend')
                 }
+            }
+        }
+
+        // ШАГ 2: Запускаем линтер и тесты прямо ВНУТРИ вашего собранного образа fitflow-api
+        stage('Lint & Test') {
+            steps {
+                sh """
+                echo "Запуск Ruff линтера внутри собранного контейнера..."
+                docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check . || true
+                
+                echo "Проверка установленных зависимостей..."
+                docker run --rm ${IMAGE_API}:${env.GIT_HASH} pip list
+                """
             }
         }
 
