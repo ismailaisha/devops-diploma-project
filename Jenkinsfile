@@ -39,7 +39,7 @@ pipeline {
 
         stage('Lint & Test') {
             steps {
-                // Best Practice: проверяем код прямо внутри свежесобранного контейнера приложения
+                // Best Practice - проверяем код прямо внутри свежесобранного контейнера приложения
                 sh """
                 echo "Запуск Ruff линтера внутри собранного контейнера..."
                 docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check . || true
