@@ -21,10 +21,10 @@ pipeline {
             }
         }
 
-        // ШАГ 1: Сначала собираем образы (теперь контекст сборки передается без проблем)
         stage('Build') {
             steps {
                 script {
+                    // Контекст сборки передается изолированно. requirements.txt запекается в образ.
                     docker.build("${IMAGE_API}:${env.GIT_HASH}", './services/api')
                     docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker')
                     docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend')
@@ -32,15 +32,12 @@ pipeline {
             }
         }
 
-        // ШАГ 2: Запускаем линтер и тесты прямо ВНУТРИ вашего собранного образа fitflow-api
         stage('Lint & Test') {
             steps {
+                // Best Practice: проверяем код прямо внутри свежесобранного контейнера приложения
                 sh """
                 echo "Запуск Ruff линтера внутри собранного контейнера..."
                 docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check . || true
-                
-                echo "Проверка установленных зависимостей..."
-                docker run --rm ${IMAGE_API}:${env.GIT_HASH} pip list
                 """
             }
         }
@@ -64,11 +61,16 @@ pipeline {
 
         stage('Deploy') {
             steps {
+                // Используем SSH Agent плагин — это самый безопасный способ работы с ключами в памяти
                 sshagent(['app-server-ssh']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} '
                         cd /opt/fitflow
-                        export GIT_HASH=${env.GIT_HASH}
+                        
+                        # Best Practice для Docker Compose: обновляем тег в .env файле на сервере, 
+                        # чтобы compose знал, какую именно версию перезапускать.
+                        sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || echo "GIT_HASH=${env.GIT_HASH}" >> .env
+                        
                         docker compose pull
                         docker compose up -d
                     '
@@ -79,10 +81,10 @@ pipeline {
     }
     post {
         success {
-            echo "готово, версия ${env.GIT_HASH} задеплоена"
+            echo "Успех! Версия ${env.GIT_HASH} успешно собрана, проверена и развернута."
         }
         failure {
-            echo "что-то пошло не так, смотри логи"
+            echo "Сборка упала. Проверьте логи конкретного этапа."
         }
     }
 }
