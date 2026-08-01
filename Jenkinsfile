@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
         DOCKER_HUB_USER  = 'aisharust94'
-        APP_SERVER       = '3.21.5.210'
+        APP_SERVER       = '10.0.1.127'
         IMAGE_API        = "${DOCKER_HUB_USER}/fitflow-api"
         IMAGE_WORKER     = "${DOCKER_HUB_USER}/fitflow-worker"
         IMAGE_FRONTEND   = "${DOCKER_HUB_USER}/fitflow-frontend"
