@@ -7,6 +7,11 @@ pipeline {
         IMAGE_WORKER     = "${DOCKER_HUB_USER}/fitflow-worker"
         IMAGE_FRONTEND   = "${DOCKER_HUB_USER}/fitflow-frontend"
     }
+
+    triggers {
+        githubPush()
+    }
+
     stages {
         stage('Checkout') {
             steps {
