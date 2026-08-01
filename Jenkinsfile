@@ -66,7 +66,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                // Используем SSH Agent плагин — это самый безопасный способ работы с ключами в памяти
+                // Используем SSH плагин — это самый безопасный способ работы с ключами в памяти
                 sshagent(['app-server-ssh']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} '
