@@ -128,3 +128,45 @@
   become: true
   become_user: deployer
   tags: deploy
+
+  # 1. Сначала проверяем и настраиваем Swap (чтобы сервер не завис)
+- name: Проверяем, существует ли уже swap-файл
+  stat:
+    path: /swapfile
+  register: swap_file_check
+
+- name: Создаем пустой файл подкачки размером 2 ГБ
+  command: fallocate -l 2G /swapfile
+  when: not swap_file_check.stat.exists
+
+- name: Устанавливаем безопасные права доступа (только для root)
+  file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Форматируем файл как пространство swap
+  command: mkswap /swapfile
+  when: not swap_file_check.stat.exists
+
+- name: Включаем swap-файл в текущей сессии
+  command: swapon /swapfile
+  when: not swap_file_check.stat.exists
+
+- name: Добавляем swap в /etc/fstab для автоматического включения при перезагрузке
+  mount:
+    name: none
+    src: /swapfile
+    fstype: swap
+    opts: sw
+    state: present
+
+# 2. И только теперь запускаем само приложение через Docker Compose
+- name: Start application
+  shell: |
+    cd /opt/fitflow
+    docker compose up -d
+  become: true
+  become_user: deployer
+  tags: deploy
