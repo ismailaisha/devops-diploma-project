@@ -6,7 +6,7 @@
     - common
 
 - name: Setup WireGuard VPN
-  hosts: aws
+  hosts: all
   become: true
   roles:
     - wireguard
