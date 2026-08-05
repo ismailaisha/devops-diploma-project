@@ -1,0 +1,45 @@
+all:
+  children:
+    aws:
+      children:
+        app:
+          hosts:
+            app_server:
+              ansible_host: AWS_APP_PUBLIC_IP
+              ansible_user: ubuntu
+              ansible_ssh_private_key_file: ~/.ssh/fitflow
+              wireguard_ip: 10.8.0.1
+        jenkins:
+          hosts:
+            jenkins_server:
+              ansible_host: AWS_JENKINS_PUBLIC_IP
+              ansible_user: ubuntu
+              ansible_ssh_private_key_file: ~/.ssh/fitflow
+              wireguard_ip: 10.8.0.2
+    local_vms:
+      children:
+        database:
+          hosts:
+            pg_master:
+              ansible_host: 192.168.56.135
+              ansible_user: VM_USER_1
+              ansible_ssh_private_key_file: ~/.ssh/fitflow
+              wireguard_ip: 10.8.0.3
+            pg_replica:
+              ansible_host: 192.168.56.140
+              ansible_user: VM_USER_2
+              ansible_ssh_private_key_file: ~/.ssh/fitflow
+              wireguard_ip: 10.8.0.4
+        monitoring:
+          hosts:
+            monitoring_server:
+              ansible_host: 192.168.56.130
+              ansible_user: VM_USER_3
+              ansible_ssh_private_key_file: ~/.ssh/fitflow
+              wireguard_ip: 10.8.0.5
+    k3s_master:
+      hosts:
+        monitoring_server:
+    k3s_worker:
+      hosts:
+        app_server:
