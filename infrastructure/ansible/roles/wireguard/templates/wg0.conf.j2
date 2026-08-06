@@ -4,7 +4,7 @@ Address = {{ wireguard_ip }}/24
 ListenPort = 51820
 
 # ─── App Server (AWS) ──────────────────────────
-{% if inventory_hostname != 'app_server' %}
+{% if inventory_hostname != 'app_server' and hostvars['app_server']['wg_public_key'] is defined %}
 [Peer]
 PublicKey = {{ hostvars['app_server']['wg_public_key'] }}
 AllowedIPs = 10.8.0.1/32
@@ -13,7 +13,7 @@ PersistentKeepalive = 25
 {% endif %}
 
 # ─── Jenkins Server (AWS) ──────────────────────
-{% if inventory_hostname != 'jenkins_server' %}
+{% if inventory_hostname != 'jenkins_server' and hostvars['jenkins_server']['wg_public_key'] is defined %}
 [Peer]
 PublicKey = {{ hostvars['jenkins_server']['wg_public_key'] }}
 AllowedIPs = 10.8.0.2/32
@@ -22,15 +22,41 @@ PersistentKeepalive = 25
 {% endif %}
 
 # ─── Database Master (VirtualBox) ──────────────
-{% if inventory_hostname != 'pg_master' %}
+{% if inventory_hostname != 'pg_master' and hostvars['pg_master']['wg_public_key'] is defined %}
 [Peer]
 PublicKey = {{ hostvars['pg_master']['wg_public_key'] }}
 AllowedIPs = 10.8.0.3/32
-# Для облака AWS мы НЕ пишем Endpoint до локальной машины, так как она за NAT
+{# Для облака AWS мы НЕ пишем Endpoint до локальной машины, так как она за NAT #}
 {% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-# Ждем входящее соединение от локальной VM
+{# Ждем входящее соединение от локальной VM #}
 {% else %}
 Endpoint = {{ hostvars['pg_master']['ansible_host'] }}:51820
+PersistentKeepalive = 25
+{% endif %}
+{% endif %}
+
+# ─── Database Replica (VirtualBox) ─────────────
+{% if inventory_hostname != 'pg_replica' and hostvars['pg_replica']['wg_public_key'] is defined %}
+[Peer]
+PublicKey = {{ hostvars['pg_replica']['wg_public_key'] }}
+AllowedIPs = 10.8.0.4/32
+{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
+{# Ждем входящее соединение #}
+{% else %}
+Endpoint = {{ hostvars['pg_replica']['ansible_host'] }}:51820
+PersistentKeepalive = 25
+{% endif %}
+{% endif %}
+
+# ─── Monitoring Server (VirtualBox) ────────────
+{% if inventory_hostname != 'monitoring_server' and hostvars['monitoring_server']['wg_public_key'] is defined %}
+[Peer]
+PublicKey = {{ hostvars['monitoring_server']['wg_public_key'] }}
+AllowedIPs = 10.8.0.5/32
+{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
+{# Ждем входящее соединение #}
+{% else %}
+Endpoint = {{ hostvars['monitoring_server']['ansible_host'] }}:51820
 PersistentKeepalive = 25
 {% endif %}
 {% endif %}
