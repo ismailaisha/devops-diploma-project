@@ -58,15 +58,19 @@
 # etcd хранит информацию о том кто сейчас мастер
 # Patroni спрашивает etcd при каждом решении
 
-- name: Install etcd
+- name: Install etcd and client
   apt:
-    name: etcd
+    name:       
+      - etcd-server
+      - etcd-client
     state: present
-  tags: etcd
+  tags: 
+      - etcd
+      - client
 
 - name: Start and enable etcd
   service:
-    name: etcd
+    name: etcd-server
     state: started
     enabled: true
   tags: etcd
