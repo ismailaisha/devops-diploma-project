@@ -86,8 +86,8 @@
   file:
     path: /opt/fitflow
     state: directory
-    owner: deployer
-    group: deployer
+    owner: ubuntu
+    group: ubuntu
     mode: "0755"
   tags: deploy
 
@@ -96,8 +96,8 @@
   copy:
     src: "{{ playbook_dir }}/../../../docker-compose.yml"
     dest: /opt/fitflow/docker-compose.yml
-    owner: deployer
-    group: deployer
+    owner: ubuntu
+    group: ubuntu
     mode: "0644"
   tags: deploy
 
@@ -106,8 +106,8 @@
   copy:
     src: "{{ playbook_dir }}/../../../.env"
     dest: /opt/fitflow/.env
-    owner: deployer
-    group: deployer
+    owner: ubuntu
+    group: ubuntu
     mode: "0600"
   tags: deploy
 
@@ -120,14 +120,7 @@
     state: present
   tags: deploy
 
-# Запускаем приложение через docker-compose
-- name: Start application
-  shell: |
-    cd /opt/fitflow
-    docker compose up -d
-  become: true
-  become_user: deployer
-  tags: deploy
+
 
   # 1. Сначала проверяем и настраиваем Swap (чтобы сервер не завис)
 - name: Проверяем, существует ли уже swap-файл
@@ -168,5 +161,5 @@
     cd /opt/fitflow
     docker compose up -d
   become: true
-  become_user: deployer
+  become_user: ubuntu
   tags: deploy
