@@ -1,0 +1,8 @@
+---
+- name: "Worker: Установка K3s Agent и подключение к Master"
+  ansible.builtin.shell: |
+    curl -sfL https://k3s.io | K3S_URL=https://10.8.0.5:6443 K3S_TOKEN={{ hostvars['localhost']['k3s_cluster_token'] }} sh -s - agent \
+      --node-ip={{ ansible_host }} \
+      --flannel-iface=wg0
+  args:
+    creates: /usr/local/bin/k3s

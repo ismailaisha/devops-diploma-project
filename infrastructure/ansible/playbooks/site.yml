@@ -1,10 +1,10 @@
 ---
-- name: Подготовка SSH-ключей безопасности
+- name: "Безопасная подготовка SSH-ключей"
   hosts: localhost
   connection: local
   gather_facts: true
   tasks:
-    - name: Безопасное сканирование отпечатков виртуалбоксов
+    - name: "Сканирование и добавление отпечатков хостов в known_hosts"
       ansible.builtin.known_hosts:
         name: "{{ item }}"
         key: "{{ lookup('pipe', 'ssh-keyscan -H ' + item) }}"
@@ -15,37 +15,43 @@
         - "192.168.56.135"
         - "192.168.56.140"
 
-- name: Common setup for all servers
+- name: "Базовая настройка операционной системы"
   hosts: all
   become: true
   roles:
     - common
 
-- name: Setup WireGuard VPN on all nodes
+- name: "Развертывание сети WireGuard VPN"
   hosts: all
   become: true
   roles:
     - wireguard
 
-- name: Setup App Server
+- name: "Развертывание гибридного кластера K3s"
+  hosts: k3s_master,k3s_worker
+  become: true
+  roles:
+    - k3s
+
+- name: "Настройка серверов приложений (Docker-окружение)"
   hosts: app
   become: true
   roles:
     - app
 
-- name: Setup Jenkins Server
+- name: "Настройка CI/CD сервера Jenkins"
   hosts: jenkins
   become: true
   roles:
     - jenkins
 
-- name: Setup Database Servers
+- name: "Настройка отказоустойчивого кластера БД (Patroni)"
   hosts: database
   become: true
   roles:
     - database
 
-- name: Setup Monitoring Server
+- name: "Настройка сервера мониторинга"
   hosts: monitoring
   become: true
   roles:

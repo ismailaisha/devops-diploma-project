@@ -1,0 +1,14 @@
+---
+- name: "K3s: Предварительная проверка наличия WireGuard туннеля"
+  ansible.builtin.command: ip link show wg0
+  register: wg0_status
+  failed_when: wg0_status.rc != 0
+  changed_when: false
+
+- name: "K3s: Запуск сценария для Master"
+  ansible.builtin.include_tasks: master.yml
+  when: "'k3s_master' in group_names"
+
+- name: "K3s: Запуск сценария для Worker"
+  ansible.builtin.include_tasks: worker.yml
+  when: "'k3s_worker' in group_names"
