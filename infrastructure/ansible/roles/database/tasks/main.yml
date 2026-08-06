@@ -6,7 +6,6 @@
 # ─────────────────────────────────────────
 
 # ─── Установка зависимостей ─────────────
-
 - name: Install dependencies
   apt:
     name:
@@ -20,18 +19,25 @@
   tags: packages
 
 # ─── Установка PostgreSQL 15 ─────────────
-
-# Добавляем официальный репозиторий PostgreSQL
-# В Ubuntu по умолчанию старая версия
-- name: Add PostgreSQL GPG key
-  apt_key:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    state: present
+# Best Practice: Удаляем старый файл репозитория, чтобы не было конфликта Signed-By
+- name: Remove old conflicting PostgreSQL repository file
+  file:
+    path: /etc/apt/sources.list.d/apt_postgresql_org_pub_repos_apt.list
+    state: absent
   tags: postgres
 
+# Скачиваем GPG-ключ по современным стандартам Ubuntu 24.04
+- name: Add PostgreSQL GPG key
+  get_url:
+    url: https://postgresql.org
+    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
+    mode: "0644"
+  tags: postgres
+
+# Добавляем репозиторий с привязкой к новому keyring
 - name: Add PostgreSQL repository
   apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
     state: present
   tags: postgres
 
@@ -46,7 +52,6 @@
   tags: postgres
 
 # Останавливаем PostgreSQL — Patroni будет управлять им
-# Если оба запущены одновременно — конфликт
 - name: Stop PostgreSQL service
   service:
     name: postgresql
@@ -55,36 +60,32 @@
   tags: postgres
 
 # ─── Установка etcd ──────────────────────
-# etcd хранит информацию о том кто сейчас мастер
-# Patroni спрашивает etcd при каждом решении
-
 - name: Install etcd and client
   apt:
-    name:       
+    name:
       - etcd-server
       - etcd-client
     state: present
-  tags: 
-      - etcd
-      - client
+  tags:
+    - etcd
+    - client
 
 - name: Start and enable etcd
   service:
-    name: etcd-server
+    name: etcd
     state: started
     enabled: true
-  tags: etcd
+  tags:
+    - etcd
 
 # ─── Установка Patroni ───────────────────
-# Patroni — менеджер высокой доступности
-# для PostgreSQL
-
 - name: Install Patroni
   pip:
     name:
       - patroni[etcd]
       - psycopg2-binary
     state: present
+    extra_args: "--break-system-packages" # Совместимо со всеми версиями Ansible на Ubuntu 24.04
   tags: patroni
 
 # Создаём папку для конфига Patroni
@@ -107,8 +108,7 @@
     mode: "0700"
   tags: patroni
 
-# Копируем конфиг Patroni на сервер
-# Используем шаблон — разные настройки для мастера и реплики
+# Копируем конфиг Patroni на server
 - name: Copy Patroni config
   template:
     src: patroni.yml.j2
@@ -150,12 +150,11 @@
   tags: patroni
 
 # ─── Настройка бэкапов ───────────────────
-# Ночной бэкап в S3 через cron
-
 - name: Install AWS CLI for backups
   pip:
     name: awscli
     state: present
+    extra_args: "--break-system-packages" # Совместимо со всеми версиями Ansible на Ubuntu 24.04
   tags: backup
 
 # Создаём скрипт бэкапа
@@ -165,16 +164,15 @@
       #!/bin/bash
       DATE=$(date +%Y%m%d_%H%M%S)
       BACKUP_FILE="/tmp/fitflow_backup_${DATE}.sql.gz"
-      
+
       # Создаём бэкап
       pg_dump -U postgres fitflow | gzip > $BACKUP_FILE
-      
+
       # Загружаем в S3
       aws s3 cp $BACKUP_FILE s3://fitflow-backups-080403789929/backups/
-      
+
       # Удаляем локальный файл
       rm -f $BACKUP_FILE
-      
       echo "Backup completed: $DATE"
     dest: /usr/local/bin/fitflow-backup.sh
     mode: "0755"
