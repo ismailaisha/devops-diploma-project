@@ -6,22 +6,39 @@
 # ─────────────────────────────────────────
 
 # ─── Установка PostgreSQL 15 ─────────────
-# 1. Ищем все старые файлы репозиториев СУБД
-- name: Find old PostgreSQL repository files
-  ansible.builtin.find:
-    paths: /etc/apt/sources.list.d/
-    patterns: "*postgresql*,*pgdg*"
-  register: old_repo_files
+# 1. Вычищаем старый репозиторий из главного файла (лечим pg_master)
+- name: Clean old postgres lines from main sources.list
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list
+    regexp: '^deb .*apt\.postgresql\.org.*$'
+    replace: ''
   tags: postgres
 
-# 2. Удаляем всё, что нашли
-- name: Remove found old repository files
+# 2. Удаляем старые файлы из подпапок, если они остались
+- name: Remove old repository files from sources.list.d
   ansible.builtin.file:
-    path: "{{ item.path }}"
+    path: "/etc/apt/sources.list.d/{{ item }}"
     state: absent
-  loop: "{{ old_repo_files.files }}"
+  loop:
+    - apt_postgresql_org_pub_repos_apt.list
+    - pgdg.list
   tags: postgres
 
+# 3. Скачиваем GPG ключ напрямую в стандартную общую папку ключей APT
+- name: Add PostgreSQL apt key directly
+  ansible.builtin.apt_key:
+    url: https://postgresql.org
+    state: present
+  tags: postgres
+
+# 4. Добавляем чистую строку репозитория (без сложных путей к файлам ключей)
+- name: Add PostgreSQL repository
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
+    state: present
+    update_cache: true
+  tags: postgres
+  
   # ─── Установка зависимостей ─────────────
 - name: Install dependencies
   apt:
