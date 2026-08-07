@@ -6,11 +6,20 @@
 # ─────────────────────────────────────────
 
 # ─── Установка PostgreSQL 15 ─────────────
-# Best Practice: Удаляем старый файл репозитория, чтобы не было конфликта Signed-By
-- name: Remove old conflicting PostgreSQL repository file
-  file:
-    path: /etc/apt/sources.list.d/apt_postgresql_org_pub_repos_apt.list
+# 1. Ищем все старые файлы репозиториев СУБД
+- name: Find old PostgreSQL repository files
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d/
+    patterns: "*postgresql*,*pgdg*"
+  register: old_repo_files
+  tags: postgres
+
+# 2. Удаляем всё, что нашли
+- name: Remove found old repository files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
     state: absent
+  loop: "{{ old_repo_files.files }}"
   tags: postgres
 
   # ─── Установка зависимостей ─────────────
@@ -34,10 +43,10 @@
     mode: "0644"
   tags: postgres
 
-# Добавляем репозиторий с привязкой к новому keyring
+# Добавляем репозиторий с жестко указанной версией noble
 - name: Add PostgreSQL repository
   apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
     state: present
   tags: postgres
 
