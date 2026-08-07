@@ -24,20 +24,20 @@
     - pgdg.list
   tags: postgres
 
-# 3. Скачиваем GPG ключ напрямую в стандартную общую папку ключей APT
-- name: Add PostgreSQL apt key directly
-  ansible.builtin.apt_key:
-    url: https://postgresql.org
-    state: present
+- name: Add PostgreSQL GPG key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
+    mode: "0644"
   tags: postgres
 
-# 4. Добавляем чистую строку репозитория (без сложных путей к файлам ключей)
 - name: Add PostgreSQL repository
   ansible.builtin.apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
     state: present
     update_cache: true
   tags: postgres
+
   
   # ─── Установка зависимостей ─────────────
 - name: Install dependencies
