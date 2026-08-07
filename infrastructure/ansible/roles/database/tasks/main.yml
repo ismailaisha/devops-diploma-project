@@ -5,7 +5,15 @@
 # Выполняется на pg_master и pg_replica
 # ─────────────────────────────────────────
 
-# ─── Установка зависимостей ─────────────
+# ─── Установка PostgreSQL 15 ─────────────
+# Best Practice: Удаляем старый файл репозитория, чтобы не было конфликта Signed-By
+- name: Remove old conflicting PostgreSQL repository file
+  file:
+    path: /etc/apt/sources.list.d/apt_postgresql_org_pub_repos_apt.list
+    state: absent
+  tags: postgres
+
+  # ─── Установка зависимостей ─────────────
 - name: Install dependencies
   apt:
     name:
@@ -17,14 +25,6 @@
     state: present
     update_cache: true
   tags: packages
-
-# ─── Установка PostgreSQL 15 ─────────────
-# Best Practice: Удаляем старый файл репозитория, чтобы не было конфликта Signed-By
-- name: Remove old conflicting PostgreSQL repository file
-  file:
-    path: /etc/apt/sources.list.d/apt_postgresql_org_pub_repos_apt.list
-    state: absent
-  tags: postgres
 
 # Скачиваем GPG-ключ по современным стандартам Ubuntu 24.04
 - name: Add PostgreSQL GPG key
