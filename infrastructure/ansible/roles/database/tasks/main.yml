@@ -5,8 +5,9 @@
 # Выполняется на pg_master и pg_replica
 # ─────────────────────────────────────────
 
-# ─── Установка PostgreSQL 15 ─────────────
-# 1. Вычищаем старый репозиторий из главного файла (лечим pg_master)
+# ─── Полная очистка и лечение APT ─────────────
+
+# 1. Вычищаем старые строки, если они въелись в главный файл
 - name: Clean old postgres lines from main sources.list
   ansible.builtin.replace:
     path: /etc/apt/sources.list
@@ -14,7 +15,7 @@
     replace: ''
   tags: postgres
 
-# 2. Удаляем старые файлы из подпапок, если они остались
+# 2. Удаляем старые списки репозиториев СУБД, чтобы не было конфликтов
 - name: Remove old repository files from sources.list.d
   ansible.builtin.file:
     path: "/etc/apt/sources.list.d/{{ item }}"
@@ -24,22 +25,38 @@
     - pgdg.list
   tags: postgres
 
+# 3. Создаем стандартную системную папку для ключей (по стандартам Ubuntu 24.04)
+- name: Ensure keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  tags: postgres
+
+# 4. Скачиваем официальный ключ в правильную защищенную папку
 - name: Add PostgreSQL GPG key
   ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
+    dest: /etc/apt/keyrings/postgresql-archive-keyring.asc
     mode: "0644"
   tags: postgres
 
+# 5. Добавляем репозиторий с обязательной привязкой к скачанному ключу
 - name: Add PostgreSQL repository
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
+    repo: "deb [signed-by=/etc/apt/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
     state: present
     update_cache: true
   tags: postgres
 
-  
-  # ─── Установка зависимостей ─────────────
+# ─── Сброс кэша и установка зависимостей ─────────────
+
+# 6. Принудительно очищаем сломанную память кэша, чтобы убрать ошибку unknown reason
+- name: Force purge broken apt cache memory
+  ansible.builtin.command: apt-get clean
+  changed_when: true
+  tags: postgres
+
 - name: Install dependencies
   apt:
     name:
@@ -52,21 +69,6 @@
     update_cache: true
   tags: packages
 
-# Скачиваем GPG-ключ по современным стандартам Ubuntu 24.04
-- name: Add PostgreSQL GPG key
-  get_url:
-    url: https://postgresql.org
-    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
-    mode: "0644"
-  tags: postgres
-
-# Добавляем репозиторий с жестко указанной версией noble
-- name: Add PostgreSQL repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
-    state: present
-  tags: postgres
-
 - name: Install PostgreSQL 15
   apt:
     name:
@@ -74,7 +76,6 @@
       - postgresql-client-15
       - postgresql-contrib-15
     state: present
-    update_cache: true
   tags: postgres
 
 # Останавливаем PostgreSQL — Patroni будет управлять им
@@ -111,7 +112,7 @@
       - patroni[etcd]
       - psycopg2-binary
     state: present
-    extra_args: "--break-system-packages" # Совместимо со всеми версиями Ansible на Ubuntu 24.04
+    extra_args: "--break-system-packages"
   tags: patroni
 
 # Создаём папку для конфига Patroni
@@ -134,7 +135,7 @@
     mode: "0700"
   tags: patroni
 
-# Копируем конфиг Patroni на server
+# Копируем конфиг Patroni на сервер
 - name: Copy Patroni config
   template:
     src: patroni.yml.j2
@@ -180,7 +181,7 @@
   pip:
     name: awscli
     state: present
-    extra_args: "--break-system-packages" # Совместимо со всеми версиями Ansible на Ubuntu 24.04
+    extra_args: "--break-system-packages"
   tags: backup
 
 # Создаём скрипт бэкапа
