@@ -49,19 +49,15 @@
     content: |
       {
         "registry-mirrors": [
-          "https://gcr.io",
-          "https://daocloud.io"
+          "https://daocloud.io",
+          "https://163.com",
+          "https://docker-cn.com"
         ]
       }
     dest: /etc/docker/daemon.json
     mode: "0644"
   tags: monitoring
 
-- name: "Monitoring: Restart Docker to apply mirror"
-  ansible.builtin.systemd:
-    name: docker
-    state: restarted
-  tags: monitoring
 
 # ─── Создаём структуру папок ────────────
 - name: Create monitoring directories
