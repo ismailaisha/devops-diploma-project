@@ -6,35 +6,44 @@
 
 # ─── Установка Docker ───────────────────
 
-- name: Add Docker GPG key
-  apt_key:
+- name: Ensure keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  tags: docker
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
   tags: docker
 
 - name: Add Docker repository
-  apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable"
     state: present
+    update_cache: true
   tags: docker
 
-- name: Install Docker
-  apt:
+- name: Install Docker components
+  ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
       - docker-compose-plugin
     state: present
-    update_cache: true
   tags: docker
 
 - name: Start and enable Docker
-  service:
+  ansible.builtin.service:
     name: docker
     state: started
     enabled: true
   tags: docker
+
 
 # ─── Создаём структуру папок ────────────
 
