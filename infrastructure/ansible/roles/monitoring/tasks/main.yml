@@ -162,3 +162,11 @@
     port: "3100"
     proto: tcp
   tags: firewall
+
+- name: UFW - allow Kubernetes API Server
+  ufw:
+    rule: allow
+    port: "6443"
+    proto: tcp
+  tags: firewall
+
