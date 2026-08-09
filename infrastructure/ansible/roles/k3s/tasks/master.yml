@@ -1,25 +1,27 @@
 ---
 - name: "Master: Установка K3s и привязка к интерфейсу wg0"
   ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io  | sh -s - server \
+    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | sh -s - server \
       --node-ip=10.8.0.5 \
       --flannel-iface=wg0 \
       --write-kubeconfig-mode "644"
   tags: k3s
 
-
-- name: "Master: Ожидание появления токена кластера"
+- name: "Master: Ожидание генерации токена кластера"
   ansible.builtin.wait_for:
     path: /var/lib/rancher/k3s/server/node-token
-    timeout: 30
+    timeout: 300
+  tags: k3s
 
-- name: "Master: Чтение сгенерированного токена"
+- name: "Master: Чтение токена кластера"
   ansible.builtin.slurp:
     src: /var/lib/rancher/k3s/server/node-token
-  register: k3s_token_encoded
+  register: k3s_token_base64
+  tags: k3s
 
-- name: "Master: Динамическое сохранение токена в памяти Ansible без хардкода"
+- name: "Master: Сохранение токена в память localhost"
   ansible.builtin.set_fact:
-    k3s_cluster_token: "{{ k3s_token_encoded['content'] | b64decode | trim }}"
+    k3s_cluster_token: "{{ k3s_token_base64.content | b64decode | trim }}"
   delegate_to: localhost
   delegate_facts: true
+  tags: k3s
