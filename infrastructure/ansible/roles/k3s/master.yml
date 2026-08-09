@@ -2,11 +2,11 @@
 - name: "Master: Установка K3s и привязка к интерфейсу wg0"
   ansible.builtin.shell: |
     curl -sfL https://k3s.io | sh -s - server \
-      --node-ip={{ ansible_host }} \
+      --node-ip=10.8.0.5 \
       --flannel-iface=wg0 \
       --write-kubeconfig-mode "644"
-  args:
-    creates: /usr/local/bin/k3s
+  tags: k3s
+
 
 - name: "Master: Ожидание появления токена кластера"
   ansible.builtin.wait_for:
