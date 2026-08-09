@@ -51,15 +51,16 @@
   become: true
   tasks:
     - name: "Запуск сценария установки Master"
-      ansible.builtin.include_tasks: "/roles/k3s/tasks/master.yml"
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/k3s/tasks/master.yml"
 
 - name: "Kubernetes: Подключение рабочих нод (Worker)"
   hosts: k3s_worker
   become: true
   tasks:
     - name: "Запуск сценария подключения Worker"
-      ansible.builtin.include_tasks: "/roles/k3s/tasks/worker.yml"
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/k3s/tasks/worker.yml"
 # ──────────────────────────────────────────────────────────────────────────
+
 
 - name: "Настройка серверов приложений (Docker-окружение)"
   hosts: app
