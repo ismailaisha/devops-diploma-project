@@ -1,8 +1,7 @@
 ---
 - name: "Worker: Установка K3s Agent и подключение к Master через VPN"
   ansible.builtin.shell: |
-    curl -sfL https://k3s.io | K3S_URL=https://10.8.0.5:6443 K3S_TOKEN={{ hostvars['localhost']['k3s_cluster_token'] }} sh -s - agent \
+    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | K3S_URL=https://10.8.0.5:6443 K3S_TOKEN={{ hostvars['localhost']['k3s_cluster_token'] }} sh -s - agent \
       --node-ip={{ wireguard_ip }} \
       --flannel-iface=wg0
   tags: k3s
-
