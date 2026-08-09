@@ -45,11 +45,21 @@
   roles:
     - wireguard
 
-- name: "Развертывание гибридного кластера K3s"
-  hosts: k3s_master,k3s_worker
+# ─── Развертывание Kubernetes Кластера ────────────────────────────────────
+- name: "Kubernetes: Инициализация Control Plane (Master)"
+  hosts: k3s_master
   become: true
-  roles:
-    - k3s
+  tasks:
+    - name: "Запуск сценария установки Master"
+      ansible.builtin.include_tasks: "../roles/k3s/tasks/master.yml"
+
+- name: "Kubernetes: Подключение рабочих нод (Worker)"
+  hosts: k3s_worker
+  become: true
+  tasks:
+    - name: "Запуск сценария подключения Worker"
+      ansible.builtin.include_tasks: "../roles/k3s/tasks/worker.yml"
+# ──────────────────────────────────────────────────────────────────────────
 
 - name: "Настройка серверов приложений (Docker-окружение)"
   hosts: app

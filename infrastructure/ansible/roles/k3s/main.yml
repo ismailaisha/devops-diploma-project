@@ -7,8 +7,6 @@
 
 - name: "K3s: Запуск сценария для Master"
   ansible.builtin.include_tasks: master.yml
-  when: "'k3s_master' in group_names"
 
 - name: "K3s: Запуск сценария для Worker"
   ansible.builtin.include_tasks: worker.yml
-  when: "'k3s_worker' in group_names"
