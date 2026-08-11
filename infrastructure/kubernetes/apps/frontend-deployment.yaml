@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fitflow-frontend
+  namespace: default
+spec:
+  replicas: 1 # Для раздачи интерфейса нам пока достаточно одной копии
+  selector:
+    matchLabels:
+      app: fitflow-frontend
+  template:
+    metadata:
+      labels:
+        app: fitflow-frontend
+    spec:
+      # Снова привязываем строго к облаку AWS
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - ip-10-0-1-127
+      containers:
+        - name: frontend
+          image: aisharust94/fitflow-frontend:latest
+          ports:
+            - containerPort: 80 # ВАЖНО: Стандартный порт Nginx для веб-сайтов

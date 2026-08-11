@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fitflow-worker
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fitflow-worker
+  template:
+    metadata:
+      labels:
+        app: fitflow-worker
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - ip-10-0-1-127
+      containers:
+        - name: worker
+          image: aisharust94/fitflow-worker:latest
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://patroni_user:пароль@10.8.0.3:5432/fitflow_db"
+            - name: REDIS_URL
+              value: "redis://10.8.0.1:6379/0"
