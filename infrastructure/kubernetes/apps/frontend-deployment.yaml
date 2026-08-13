@@ -4,7 +4,7 @@ metadata:
   name: fitflow-frontend
   namespace: default
 spec:
-  replicas: 1 # Для раздачи интерфейса нам пока достаточно одной копии
+  replicas: 1
   selector:
     matchLabels:
       app: fitflow-frontend
@@ -13,7 +13,6 @@ spec:
       labels:
         app: fitflow-frontend
     spec:
-      # Снова привязываем строго к облаку AWS
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -26,5 +25,6 @@ spec:
       containers:
         - name: frontend
           image: aisharust94/fitflow-frontend:latest
+          imagePullPolicy: Always
           ports:
-            - containerPort: 80 # ВАЖНО: Стандартный порт Nginx для веб-сайтов
+            - containerPort: 80

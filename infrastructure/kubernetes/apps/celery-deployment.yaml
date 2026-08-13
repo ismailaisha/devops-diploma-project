@@ -25,6 +25,7 @@ spec:
       containers:
         - name: worker
           image: aisharust94/fitflow-worker:latest
+          imagePullPolicy: Always
           env:
             - name: DATABASE_URL
               value: "postgresql://patroni_user:пароль@10.8.0.3:5432/fitflow_db"
