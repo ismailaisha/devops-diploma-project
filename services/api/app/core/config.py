@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # База данных
@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     AWS_BUCKET_NAME: str = ""
     AWS_REGION: str = "eu-west-1"
 
-    class Config:
-        env_file = ".env"
+    # Декларативно приказываем Pydantic игнорировать весь лишний мусор из ОС хоста
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore"
+    )
 
 settings = Settings()
