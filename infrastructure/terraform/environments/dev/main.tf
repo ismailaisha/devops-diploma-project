@@ -139,7 +139,7 @@ ingress {
     from_port       = 30080
     to_port         = 30080
     protocol        = "tcp"
-    cidr_blocks     = ["10.8.0.0/24"] # Доступ открыт ТОЛЬКО внутри вашей подсети WireGuard
+    cidr_blocks     = ["0.0.0.0/0"] 
   }
 
   # Безопасное правило для Бэкенда (доступ только через VPN)
@@ -148,7 +148,7 @@ ingress {
     from_port       = 30008
     to_port         = 30008
     protocol        = "tcp"
-    cidr_blocks     = ["10.8.0.0/24"] # Посторонние из интернета достучаться не смогут
+    cidr_blocks     = ["0.0.0.0/0"] 
   }
 
   # WireGuard VPN
