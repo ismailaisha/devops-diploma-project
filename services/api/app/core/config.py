@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Безопасность
-    SECRET_KEY: str
+    SECRET_KEY: "dev-secret-key-fitflow-default"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # AWS S3
