@@ -22,6 +22,21 @@ spec:
                     operator: In
                     values:
                       - ip-10-0-1-127
+      # --- НАЧАЛО БЛОКА ИНИЦИАЛИЗАЦИИ (INIT CONTAINERS) ---
+      initContainers:
+        - name: wait-for-api
+          image: busybox:1.36
+          command:
+            - "sh"
+            - "-c"
+            - |
+              echo "DevOps: Ожидаю запуска и DNS-разрешения сервиса бэкенда (api:8000)..."
+              until nc -zv api 8000; do
+                echo "DevOps: Бэкенд еще не доступен. Ожидание 2 секунды..."
+                sleep 2
+              done
+              echo "DevOps: Бэкенд успешно ответил! Разрешаю запуск основного контейнера Nginx."
+      # --- КОНЕЦ БЛОКА ИНИЦИАЛИЗАЦИИ ---
       containers:
         - name: frontend
           image: aisharust94/fitflow-frontend:latest
