@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # Безопасность
-    SECRET_KEY: "dev-secret-key-fitflow-default"
+    # ИСПРАВЛЕНО: возвращен тип str и знак равенства вместо двоеточия
+    SECRET_KEY: str = "dev-secret-key-fitflow-default"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # AWS S3
