@@ -42,11 +42,10 @@ pipeline {
 
         stage('Lint & Test') {
             steps {
-                // Строгая проверка кода линтером Ruff БЕЗ || true.
-                // Если в коде есть критические синтаксические ошибки — пайплайн упадет и защитит сервер.
+                  // Запускаем официальный контейнер Ruff, монтируя в него папку с кодом бэкенда
                 sh """
-                echo "Запуск строгого Ruff линтера внутри собранного контейнера API..."
-                docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check .
+                echo "Запуск официального контейнера Ruff для проверки кода API..."
+                docker run --rm -v \$(pwd)/services/api:/apps pipelinecomponents/ruff ruff check /apps
                 """
             }
         }
