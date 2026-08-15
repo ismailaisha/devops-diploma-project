@@ -34,7 +34,7 @@ services:
       retries: 5
 
   api:
-    image: aisharust94/fitflow-api:cea2e3b
+    image: aisharust94/fitflow-api:v1.0
     container_name: fitflow_api
     restart: unless-stopped
     environment:
@@ -58,7 +58,7 @@ services:
       retries: 3
 
   worker:
-    image: aisharust94/fitflow-worker:50c6f65
+    image: aisharust94/fitflow-worker:v1.0
     container_name: fitflow_worker
     restart: unless-stopped
     environment:
