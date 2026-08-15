@@ -3,9 +3,9 @@ pipeline {
     environment { 
         DOCKER_HUB_USER = 'aisharust94' 
         APP_SERVER = '10.0.1.127' 
-        IMAGE_API = 'aisharust94/fitflow-api' 
-        IMAGE_WORKER = 'aisharust94/fitflow-worker' 
-        IMAGE_FRONTEND = 'aisharust94/fitflow-frontend' 
+        IMAGE_API = "${DOCKER_HUB_USER}/fitflow-api" 
+        IMAGE_WORKER = "${DOCKER_HUB_USER}/fitflow-worker" 
+        IMAGE_FRONTEND = "${DOCKER_HUB_USER}/fitflow-frontend" 
     } 
     triggers { 
         githubPush() 
@@ -13,69 +13,78 @@ pipeline {
     stages { 
         stage('Checkout') { 
             steps { 
+                // Скачиваем код из репозитория 
                 checkout scm 
                 script { 
+                    // Вырезаем короткий хэш коммита для тегирования образов 
                     env.GIT_HASH = sh( 
                         script: 'git rev-parse --short HEAD', 
                         returnStdout: true 
                     ).trim() 
-                    echo "Building version: ${env.GIT_HASH}" 
+                    echo "Собираем версию проекта: ${env.GIT_HASH}" 
                 } 
             } 
         } 
         stage('Build') { 
             steps { 
-                sh """ 
-                    docker build -t ${env.IMAGE_API}:${env.GIT_HASH} ./services/api
-                    docker build -t ${env.IMAGE_WORKER}:${env.GIT_HASH} ./services/worker
-                    docker build -t ${env.IMAGE_FRONTEND}:${env.GIT_HASH} ./services/frontend
-                """
+                script { 
+                    // Изолированная сборка трех образов на основе их локальных Dockerfile 
+                    docker.build("${IMAGE_API}:${env.GIT_HASH}", './services/api') 
+                    docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker') 
+                    docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend') 
+                } 
             } 
         } 
         stage('Lint & Test') { 
             steps { 
+                // Запускаем официальный контейнер Ruff, монтируя в него папку с кодом бэкенда 
                 sh """ 
-                    echo "Запуск Ruff линтера внутри собранного контейнера..." 
-                    docker run --rm ${env.IMAGE_API}:${env.GIT_HASH} ruff check .
+                    echo "Запуск официального контейнера Ruff для проверки кода API..." 
+                    docker run --rm -v \$(pwd)/services/api:/apps pipelinecomponents/ruff ruff check /apps 
                 """ 
             } 
         } 
         stage('Push') { 
             steps { 
+                // Безопасная авторизация на Docker Hub через секретные ключи Jenkins 
                 withCredentials([usernamePassword( 
                     credentialsId: 'dockerhub-credentials', 
                     usernameVariable: 'DOCKER_USER', 
                     passwordVariable: 'DOCKER_PASS' 
                 )]) { 
-                    sh """ 
-                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin 
+                    sh ''' 
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin 
                         
-                        # 1. Отправка хэшей коммитов для стабильного Docker Compose в облаке
-                        docker push ${env.IMAGE_API}:${env.GIT_HASH} 
-                        docker push ${env.IMAGE_WORKER}:${env.GIT_HASH} 
-                        docker push ${env.IMAGE_FRONTEND}:${env.GIT_HASH} 
+                        # 1. Отправляем оригинальные хэши коммитов для вашего стабильного Docker Compose
+                        docker push ${IMAGE_API}:${GIT_HASH} 
+                        docker push ${IMAGE_WORKER}:${GIT_HASH} 
+                        docker push ${IMAGE_FRONTEND}:${GIT_HASH} 
                         
-                        # 2. Наклеивание скользящего тега latest поверх текущей сборки
-                        docker tag ${env.IMAGE_API}:${env.GIT_HASH} ${env.IMAGE_API}:latest
-                        docker tag ${env.IMAGE_WORKER}:${env.GIT_HASH} ${env.IMAGE_WORKER}:latest
-                        docker tag ${env.IMAGE_FRONTEND}:${env.GIT_HASH} ${env.IMAGE_FRONTEND}:latest
+                        # 2. Навешиваем скользящие теги latest прямо в локальном кэше Дженкинса
+                        docker tag ${IMAGE_API}:${GIT_HASH} ${IMAGE_API}:latest
+                        docker tag ${IMAGE_WORKER}:${GIT_HASH} ${IMAGE_WORKER}:latest
+                        docker tag ${IMAGE_FRONTEND}:${GIT_HASH} ${IMAGE_FRONTEND}:latest
                         
-                        # 3. Отправка тега latest на Docker Hub для тестов Kubernetes
-                        docker push ${env.IMAGE_API}:latest
-                        docker push ${env.IMAGE_WORKER}:latest
-                        docker push ${env.IMAGE_FRONTEND}:latest
-                    """ 
+                        # 3. Отправляем теги latest на Docker Hub для автоматического запуска Kubernetes
+                        docker push ${IMAGE_API}:latest
+                        docker push ${IMAGE_WORKER}:latest
+                        docker push ${IMAGE_FRONTEND}:latest
+                    ''' 
                 } 
             } 
         } 
         stage('Deploy') { 
             steps { 
+                // Подключаемся к серверу приложений в AWS через SSH-плагин 
                 sshagent(['app-server-ssh']) { 
                     sh """ 
-                        ssh -o StrictHostKeyChecking=no ubuntu@${env.APP_SERVER} ' 
+                        ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} ' 
                             cd /opt/fitflow 
+                            # Обновляем переменную хэша в файле .env на сервере 
                             sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || echo "GIT_HASH=${env.GIT_HASH}" >> .env 
+                            # Скачиваем новые образы с Docker Hub по чертежу docker-compose.yml 
                             docker compose pull 
+                            # Перезапускаем контейнеры в облаке AWS 
                             docker compose up -d ' 
                     """ 
                 } 
@@ -84,10 +93,10 @@ pipeline {
     } 
     post { 
         success { 
-            echo "Успех! Версия ${env.GIT_HASH} успешно собрана, проверена и развернута с тегом latest." 
+            echo "Успех! Версия ${env.GIT_HASH} успешно собрана, проверена линтером и развернута в AWS." 
         } 
         failure { 
-            echo "Сборка упала. Проверьте логи конкретного этапа." 
+            echo "Сборка упала! Деплой заблокирован. Проверьте логи этапа Lint & Test или авторизации." 
         } 
     } 
 }
