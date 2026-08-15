@@ -133,6 +133,24 @@ ingress {
   description     = "SSH from Jenkins for deployment"
 }
 
+  # Безопасное правило для Фронтенда (доступ только через VPN)
+  ingress {
+    description     = "Kubernetes NodePort for Frontend via WireGuard VPN"
+    from_port       = 30080
+    to_port         = 30080
+    protocol        = "tcp"
+    cidr_blocks     = ["10.8.0.0/24"] # Доступ открыт ТОЛЬКО внутри вашей подсети WireGuard
+  }
+
+  # Безопасное правило для Бэкенда (доступ только через VPN)
+  ingress {
+    description     = "Kubernetes NodePort for FastAPI Backend via WireGuard VPN"
+    from_port       = 30008
+    to_port         = 30008
+    protocol        = "tcp"
+    cidr_blocks     = ["10.8.0.0/24"] # Посторонние из интернета достучаться не смогут
+  }
+
   # WireGuard VPN
   ingress {
     from_port   = 51820
