@@ -1,11 +1,12 @@
 pipeline {
     agent any
+
     environment {
-        DOCKER_HUB_USER  = 'aisharust94'
-        APP_SERVER       = '10.0.1.127'
-        IMAGE_API        = "${DOCKER_HUB_USER}/fitflow-api"
-        IMAGE_WORKER     = "${DOCKER_HUB_USER}/fitflow-worker"
-        IMAGE_FRONTEND   = "${DOCKER_HUB_USER}/fitflow-frontend"
+        DOCKER_HUB_USER = 'aisharust94'
+        APP_SERVER      = '10.0.1.127'
+        IMAGE_API       = "${DOCKER_HUB_USER}/fitflow-api"
+        IMAGE_WORKER    = "${DOCKER_HUB_USER}/fitflow-worker"
+        IMAGE_FRONTEND  = "${DOCKER_HUB_USER}/fitflow-frontend"
     }
 
     triggers {
@@ -15,13 +16,15 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                // Скачиваем код из репозитория
                 checkout scm
                 script {
+                    // Вырезаем короткий хэш коммита для тегирования образов
                     env.GIT_HASH = sh(
                         script: 'git rev-parse --short HEAD',
                         returnStdout: true
                     ).trim()
-                    echo "Building version: ${env.GIT_HASH}"
+                    echo "Собираем версию проекта: ${env.GIT_HASH}"
                 }
             }
         }
@@ -29,7 +32,7 @@ pipeline {
         stage('Build') {
             steps {
                 script {
-                    // Контекст сборки передается изолированно. requirements.txt запекается в образ.
+                    // Изолированная сборка трех образов на основе их локальных Dockerfile
                     docker.build("${IMAGE_API}:${env.GIT_HASH}", './services/api')
                     docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker')
                     docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend')
@@ -39,16 +42,18 @@ pipeline {
 
         stage('Lint & Test') {
             steps {
-                // Best Practice - проверяем код прямо внутри свежесобранного контейнера приложения
+                // Строгая проверка кода линтером Ruff БЕЗ || true.
+                // Если в коде есть критические синтаксические ошибки — пайплайн упадет и защитит сервер.
                 sh """
-                echo "Запуск Ruff линтера внутри собранного контейнера..."
-                docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check . || true
+                echo "Запуск строгого Ruff линтера внутри собранного контейнера API..."
+                docker run --rm ${IMAGE_API}:${env.GIT_HASH} ruff check .
                 """
             }
         }
 
         stage('Push') {
             steps {
+                // Безопасная авторизация на Docker Hub через секретные ключи Jenkins
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USER',
@@ -66,17 +71,19 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                // Используем SSH плагин — это самый безопасный способ работы с ключами в памяти
+                // Подключаемся к серверу приложений в AWS через SSH-плагин
                 sshagent(['app-server-ssh']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} '
                         cd /opt/fitflow
                         
-                        # Best Practice для Docker Compose: обновляем тег в .env файле на сервере, 
-                        # чтобы compose знал, какую именно версию перезапускать.
+                        # Обновляем переменную хэша в файле .env на сервере
                         sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || echo "GIT_HASH=${env.GIT_HASH}" >> .env
                         
+                        # Скачиваем новые образы с Docker Hub по чертежу docker-compose.yml
                         docker compose pull
+                        
+                        # Перезапускаем контейнеры в облаке AWS
                         docker compose up -d
                     '
                     """
@@ -84,12 +91,13 @@ pipeline {
             }
         }
     }
+
     post {
         success {
-            echo "Успех! Версия ${env.GIT_HASH} успешно собрана, проверена и развернута."
+            echo "Успех! Версия ${env.GIT_HASH} успешно собрана, проверена линтером и развернута в AWS."
         }
         failure {
-            echo "Сборка упала. Проверьте логи конкретного этапа."
+            echo "Сборка упала! Деплой заблокирован. Проверьте логи этапа Lint & Test или авторизации."
         }
     }
 }
