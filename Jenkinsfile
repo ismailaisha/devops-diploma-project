@@ -75,8 +75,8 @@ pipeline {
         } 
         stage('Deploy') {
             steps {
-                    sshagent(['app-server-ssh']) {
-                     sh """
+                sshagent(['app-server-ssh']) {
+                sh """
                         scp -o StrictHostKeyChecking=no \
                         docker-compose.yml \
                         ubuntu@${APP_SERVER}:/opt/fitflow/docker-compose.yml.tmp
@@ -86,12 +86,14 @@ pipeline {
 
                         mv docker-compose.yml.tmp docker-compose.yml
 
-                        sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || \
+                        sed -i "/^GIT_HASH=/d" .env
                         echo "GIT_HASH=${env.GIT_HASH}" >> .env
 
-                        docker compose config
-                        docker compose pull
-                        docker compose up -d
+                        echo "Deploying version: ${env.GIT_HASH}"
+
+                        GIT_HASH=${env.GIT_HASH} docker compose config
+                        GIT_HASH=${env.GIT_HASH} docker compose pull
+                        GIT_HASH=${env.GIT_HASH} docker compose up -d
                 '
             """
         }
