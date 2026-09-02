@@ -73,23 +73,30 @@ pipeline {
                 } 
             } 
         } 
-        stage('Deploy') { 
-            steps { 
-                // Подключаемся к серверу приложений в AWS через SSH-плагин 
-                sshagent(['app-server-ssh']) { 
-                    sh """ 
-                        ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} ' 
-                            cd /opt/fitflow 
-                            # Обновляем переменную хэша в файле .env на сервере 
-                            sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || echo "GIT_HASH=${env.GIT_HASH}" >> .env 
-                            # Скачиваем новые образы с Docker Hub по чертежу docker-compose.yml 
-                            docker compose pull 
-                            # Перезапускаем контейнеры в облаке AWS 
-                            docker compose up -d ' 
-                    """ 
-                } 
-            } 
-        } 
+        stage('Deploy') {
+            steps {
+                    sshagent(['app-server-ssh']) {
+                     sh """
+                        scp -o StrictHostKeyChecking=no \
+                        docker-compose.yml \
+                        ubuntu@${APP_SERVER}:/opt/fitflow/docker-compose.yml.tmp
+
+                        ssh -o StrictHostKeyChecking=no ubuntu@${APP_SERVER} '
+                        cd /opt/fitflow
+
+                        mv docker-compose.yml.tmp docker-compose.yml
+
+                        sed -i "s/^GIT_HASH=.*/GIT_HASH=${env.GIT_HASH}/" .env || \
+                        echo "GIT_HASH=${env.GIT_HASH}" >> .env
+
+                        docker compose config
+                        docker compose pull
+                        docker compose up -d
+                '
+            """
+        }
+    }
+}
     } 
     post { 
         success { 
