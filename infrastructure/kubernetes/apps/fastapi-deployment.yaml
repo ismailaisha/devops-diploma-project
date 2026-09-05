@@ -24,8 +24,8 @@ spec:
                       - ip-10-0-1-127
       containers:
         - name: api
-          image: aisharust94/fitflow-api:latest
-          imagePullPolicy: Always
+          image: aisharust94/fitflow-api
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
@@ -33,3 +33,4 @@ spec:
               value: "postgresql://patroni_user:пароль@10.8.0.3:5432/fitflow_db"
             - name: REDIS_URL
               value: "redis://10.8.0.1:6379/0"
+
