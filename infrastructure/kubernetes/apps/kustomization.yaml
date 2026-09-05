@@ -6,3 +6,8 @@ resources:
   - celery-deployment.yaml
   - frontend-deployment.yaml
   - services.yaml
+
+images:
+  - name: aisharust94/fitflow-api
+  - name: aisharust94/fitflow-worker
+  - name: aisharust94/fitflow-frontend
