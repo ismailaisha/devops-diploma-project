@@ -1,0 +1,74 @@
+pipeline { 
+    agent any 
+    environment { 
+        DOCKER_HUB_USER = 'aisharust94' 
+        IMAGE_API = "${DOCKER_HUB_USER}/fitflow-api" 
+        IMAGE_WORKER = "${DOCKER_HUB_USER}/fitflow-worker" 
+        IMAGE_FRONTEND = "${DOCKER_HUB_USER}/fitflow-frontend" 
+    } 
+    triggers { 
+        githubPush() 
+    } 
+    stages { 
+        stage('Checkout') { 
+            steps { 
+                checkout scm 
+                script { 
+                    env.GIT_HASH = sh( 
+                        script: 'git rev-parse --short HEAD', 
+                        returnStdout: true 
+                    ).trim() 
+                    echo "Начало CI/CD. Сборка версии: ${env.GIT_HASH}" 
+                } 
+            } 
+        } 
+        stage('Build') { 
+            steps { 
+                script { 
+                    docker.build("${IMAGE_API}:${env.GIT_HASH}", './services/api') 
+                    docker.build("${IMAGE_WORKER}:${env.GIT_HASH}", './services/worker') 
+                    docker.build("${IMAGE_FRONTEND}:${env.GIT_HASH}", './services/frontend') 
+                } 
+            } 
+        } 
+        stage('Lint & Test') { 
+            steps { 
+                sh "docker run --rm -v \$(pwd)/services/api:/apps pipelinecomponents/ruff ruff check /apps" 
+            } 
+        } 
+        stage('Push') { 
+            steps { 
+                withCredentials([usernamePassword( 
+                    credentialsId: 'dockerhub-credentials', 
+                    usernameVariable: 'DOCKER_USER', 
+                    passwordVariable: 'DOCKER_PASS' 
+                )]) { 
+                    sh ''' 
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin 
+                        docker push ${IMAGE_API}:${GIT_HASH} 
+                        docker push ${IMAGE_WORKER}:${GIT_HASH} 
+                        docker push ${IMAGE_FRONTEND}:${GIT_HASH} 
+                    ''' 
+                } 
+            } 
+        } 
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // Используем нативный инструмент Kustomize для декларативного обновления тегов перед деплоем
+                    sh """
+                        kubectl kustomize edit set image ${IMAGE_API}=${IMAGE_API}:${env.GIT_HASH}
+                        kubectl kustomize edit set image ${IMAGE_WORKER}=${IMAGE_WORKER}:${env.GIT_HASH}
+                        kubectl kustomize edit set image ${IMAGE_FRONTEND}=${IMAGE_FRONTEND}:${env.GIT_HASH}
+                        
+                        kubectl apply -k .
+                    """
+                }
+            }
+        }
+    } 
+    post { 
+        success { echo "Успех! Версия ${env.GIT_HASH} развернута в Kubernetes кластере." }
+        failure { echo "Ошибка пайплайна! Деплой в Kubernetes заблокирован." }
+    } 
+}
