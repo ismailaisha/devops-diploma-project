@@ -1,93 +1,146 @@
 ---
-- name: Install WireGuard
-  apt:
+# ============================================================
+# WireGuard
+# Этап 1: подготовка ключей
+# Этап 2: создание конфигурации
+# ============================================================
+
+- name: "WireGuard: Установка пакетов"
+  ansible.builtin.apt:
     name:
       - wireguard
       - wireguard-tools
     state: present
     update_cache: true
-  tags: wireguard
+  tags:
+    - wireguard
 
-- name: Check if private key already exists
-  stat:
+# ------------------------------------------------------------
+# ЭТАП 1. Ключи
+# ------------------------------------------------------------
+
+- name: "WireGuard: Проверка существования private key"
+  ansible.builtin.stat:
     path: /etc/wireguard/private.key
   register: wg_private_key_file
-  tags: wireguard
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Generate WireGuard private key
-  shell: wg genkey
+- name: "WireGuard: Генерация private key"
+  ansible.builtin.shell:
+    cmd: wg genkey
   register: wg_private_key_generated
   when: not wg_private_key_file.stat.exists
-  tags: wireguard
+  changed_when: true
+  no_log: true
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Save private key to file
-  copy:
-    content: "{{ wg_private_key_generated.stdout }}"
+- name: "WireGuard: Сохранение private key"
+  ansible.builtin.copy:
+    content: "{{ wg_private_key_generated.stdout | trim }}\n"
     dest: /etc/wireguard/private.key
-    mode: "0600"
     owner: root
     group: root
+    mode: "0600"
   when: not wg_private_key_file.stat.exists
-  tags: wireguard
+  no_log: true
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Read private key from file
-  slurp:
+- name: "WireGuard: Чтение private key"
+  ansible.builtin.slurp:
     src: /etc/wireguard/private.key
   register: wg_private_key_slurped
-  tags: wireguard
+  no_log: true
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Generate WireGuard public key from private key
-  shell: echo "{{ wg_private_key_slurped.content | b64decode | trim }}" | wg pubkey
+- name: "WireGuard: Генерация public key"
+  ansible.builtin.shell:
+    cmd: "printf '%s' '{{ wg_private_key_slurped.content | b64decode | trim }}' | wg pubkey"
   register: wg_public_key_generated
   changed_when: false
-  tags: wireguard
+  no_log: true
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Save public key to file
-  copy:
-    content: "{{ wg_public_key_generated.stdout }}"
+- name: "WireGuard: Сохранение public key"
+  ansible.builtin.copy:
+    content: "{{ wg_public_key_generated.stdout | trim }}\n"
     dest: /etc/wireguard/public.key
-    mode: "0644"
     owner: root
     group: root
-  tags: wireguard
+    mode: "0644"
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Set key facts for template usage
-  set_fact:
+- name: "WireGuard: Сохранение ключей в host facts"
+  ansible.builtin.set_fact:
     wg_private_key: "{{ wg_private_key_slurped.content | b64decode | trim }}"
     wg_public_key: "{{ wg_public_key_generated.stdout | trim }}"
-  tags: wireguard
+  no_log: true
+  tags:
+    - wireguard
+    - wireguard_keys
 
-- name: Create WireGuard config
-  template:
+# ------------------------------------------------------------
+# ЭТАП 2. Конфигурация
+#
+# Этот task выполняется после всех предыдущих tasks на всех
+# хостах при стандартной strategy=linear.
+# Поэтому hostvars содержит public key каждого сервера.
+# ------------------------------------------------------------
+
+- name: "WireGuard: Создание конфигурации wg0"
+  ansible.builtin.template:
     src: wg0.conf.j2
     dest: /etc/wireguard/wg0.conf
-    mode: "0600"
     owner: root
     group: root
-  notify: Restart WireGuard
-  tags: wireguard
+    mode: "0600"
+    validate: "/usr/bin/wg-quick strip %s"
+  notify:
+    - Restart WireGuard
+  tags:
+    - wireguard
+    - wireguard_config
 
-- name: UFW - allow WireGuard
-  ufw:
+- name: "WireGuard: Разрешение UDP 51820 в UFW"
+  ansible.builtin.ufw:
     rule: allow
     port: "51820"
     proto: udp
-  tags: firewall
+  tags:
+    - wireguard
+    - firewall
 
-- name: Enable and start WireGuard
-  service:
+- name: "WireGuard: Включение и запуск wg-quick@wg0"
+  ansible.builtin.systemd:
     name: wg-quick@wg0
-    state: started
     enabled: true
-  tags: wireguard
+    state: started
+  tags:
+    - wireguard
 
-- name: Show WireGuard status
-  command: wg show
+- name: "WireGuard: Получение текущего состояния"
+  ansible.builtin.command:
+    cmd: wg show
   register: wg_status
   changed_when: false
-  tags: wireguard
+  tags:
+    - wireguard
+    - wireguard_check
 
-- name: Print WireGuard status
-  debug:
+- name: "WireGuard: Вывод состояния"
+  ansible.builtin.debug:
     msg: "{{ wg_status.stdout }}"
-  tags: wireguard
+  tags:
+    - wireguard
+    - wireguard_check
