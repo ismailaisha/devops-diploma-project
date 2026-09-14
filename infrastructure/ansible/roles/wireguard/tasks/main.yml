@@ -105,7 +105,7 @@
     owner: root
     group: root
     mode: "0600"
-    validate: "/usr/bin/wg-quick strip %s"
+
   notify:
     - Restart WireGuard
   tags:
