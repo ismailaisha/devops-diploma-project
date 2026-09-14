@@ -1,7 +1,33 @@
 ---
+- name: "Worker: Получение K3s token с Master"
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  delegate_to: monitoring_server
+  register: k3s_token_base64
+  become: true
+  run_once: true
+
+- name: "Worker: Сохранение K3s token"
+  ansible.builtin.set_fact:
+    k3s_cluster_token: "{{ k3s_token_base64.content | b64decode | trim }}"
+
 - name: "Worker: Установка K3s Agent и подключение к Master через VPN"
   ansible.builtin.shell: |
-    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | K3S_URL=https://10.8.0.5:6443 K3S_TOKEN={{ hostvars['localhost']['k3s_cluster_token'] }} sh -s - agent \
+    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | \
+    K3S_URL=https://10.8.0.5:6443 \
+    K3S_TOKEN={{ k3s_cluster_token }} \
+    sh -s - agent \
       --node-ip={{ wireguard_ip }} \
       --flannel-iface=wg0
-  tags: k3s
+  args:
+    creates: /etc/systemd/system/k3s-agent.service
+  tags:
+    - k3s
+
+- name: "Worker: Проверка статуса K3s Agent"
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: started
+    enabled: true
+  tags:
+    - k3s
