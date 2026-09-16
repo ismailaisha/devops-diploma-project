@@ -8,8 +8,10 @@ ListenPort = 51820
 [Peer]
 PublicKey = {{ hostvars['app_server']['wg_public_key'] }}
 AllowedIPs = 10.8.0.1/32
+{% if inventory_hostname != 'jenkins_server' %}
 Endpoint = {{ hostvars['app_server']['ansible_host'] }}:51820
 PersistentKeepalive = 25
+{% endif %}
 {% endif %}
 
 # ─── Jenkins Server (AWS) ──────────────────────
@@ -17,8 +19,10 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = {{ hostvars['jenkins_server']['wg_public_key'] }}
 AllowedIPs = 10.8.0.2/32
+{% if inventory_hostname != 'app_server' %}
 Endpoint = {{ hostvars['jenkins_server']['ansible_host'] }}:51820
 PersistentKeepalive = 25
+{% endif %}
 {% endif %}
 
 # ─── Database Master (VirtualBox) ──────────────
@@ -26,10 +30,7 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = {{ hostvars['pg_master']['wg_public_key'] }}
 AllowedIPs = 10.8.0.3/32
-{# Для облака AWS мы НЕ пишем Endpoint до локальной машины, так как она за NAT #}
-{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-{# Ждем входящее соединение от локальной VM #}
-{% else %}
+{% if inventory_hostname != 'app_server' and inventory_hostname != 'jenkins_server' %}
 Endpoint = {{ hostvars['pg_master']['ansible_host'] }}:51820
 PersistentKeepalive = 25
 {% endif %}
@@ -40,9 +41,7 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = {{ hostvars['pg_replica']['wg_public_key'] }}
 AllowedIPs = 10.8.0.4/32
-{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-{# Ждем входящее соединение #}
-{% else %}
+{% if inventory_hostname != 'app_server' and inventory_hostname != 'jenkins_server' %}
 Endpoint = {{ hostvars['pg_replica']['ansible_host'] }}:51820
 PersistentKeepalive = 25
 {% endif %}
@@ -53,35 +52,7 @@ PersistentKeepalive = 25
 [Peer]
 PublicKey = {{ hostvars['monitoring_server']['wg_public_key'] }}
 AllowedIPs = 10.8.0.5/32
-{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-{# Ждем входящее соединение #}
-{% else %}
-Endpoint = {{ hostvars['monitoring_server']['ansible_host'] }}:51820
-PersistentKeepalive = 25
-{% endif %}
-{% endif %}
-
-# ─── Database Replica (VirtualBox) ─────────────
-{% if inventory_hostname != 'pg_replica' %}
-[Peer]
-PublicKey = {{ hostvars['pg_replica']['wg_public_key'] }}
-AllowedIPs = 10.8.0.4/32
-{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-# Ждем входящее соединение
-{% else %}
-Endpoint = {{ hostvars['pg_replica']['ansible_host'] }}:51820
-PersistentKeepalive = 25
-{% endif %}
-{% endif %}
-
-# ─── Monitoring Server (VirtualBox) ────────────
-{% if inventory_hostname != 'monitoring_server' %}
-[Peer]
-PublicKey = {{ hostvars['monitoring_server']['wg_public_key'] }}
-AllowedIPs = 10.8.0.5/32
-{% if inventory_hostname == 'app_server' or inventory_hostname == 'jenkins_server' %}
-# Ждем входящее соединение
-{% else %}
+{% if inventory_hostname != 'app_server' and inventory_hostname != 'jenkins_server' %}
 Endpoint = {{ hostvars['monitoring_server']['ansible_host'] }}:51820
 PersistentKeepalive = 25
 {% endif %}
