@@ -1,7 +1,7 @@
 ---
 # ─────────────────────────────────────────
 # Роль monitoring — настройка мониторинга
-# Prometheus + Grafana + Loki + Alertmanager
+# Prometheus + Grafana + Loki
 # ─────────────────────────────────────────
 
 # ─── Установка Docker ───────────────────
@@ -70,7 +70,6 @@
     - /opt/monitoring/prometheus
     - /opt/monitoring/grafana
     - /opt/monitoring/loki
-    - /opt/monitoring/alertmanager
   tags: monitoring
 
 # ─── Копируем конфиги ───────────────────
@@ -82,13 +81,6 @@
   notify: Restart monitoring
   tags: monitoring
 
-- name: Copy Alertmanager config
-  template:
-    src: alertmanager.yml.j2
-    dest: /opt/monitoring/alertmanager/alertmanager.yml
-    mode: "0644"
-  notify: Restart monitoring
-  tags: monitoring
 
 - name: Copy Loki config
   copy:
