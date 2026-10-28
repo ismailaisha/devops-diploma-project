@@ -1,4 +1,5 @@
 # Python
+venv/
 .venv/
 __pycache__/
 *.pyc
@@ -12,6 +13,8 @@ __pycache__/
 .terraform.lock.hcl
 *.tfvars
 !*.tfvars.example
+tfplan
+*.tfplan
 
 # Environment
 .env
@@ -30,3 +33,7 @@ Thumbs.db
 # Logs
 *.log
 infrastructure/ansible/inventory/hosts.yml
+
+# SSH private keys
+*.pem
+*.key
