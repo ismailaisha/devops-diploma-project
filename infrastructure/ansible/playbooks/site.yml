@@ -54,7 +54,7 @@
       ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/k3s/tasks/master.yml"
 
 - name: "Kubernetes: Подключение рабочих нод (Worker)"
-  hosts: k3s_worker
+  hosts: k3s_workers
   become: true
   tasks:
     - name: "Запуск сценария подключения Worker"
