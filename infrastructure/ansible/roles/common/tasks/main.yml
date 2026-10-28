@@ -1,8 +1,9 @@
 
+
 ---
 # ============================================================
 # FITFLOW — COMMON ROLE
-# Базовая подготовка Ubuntu для всех 6 серверов
+# Базовая настройка всех серверов локальной инфраструктуры
 # ============================================================
 
 # ------------------------------------------------------------
@@ -37,43 +38,7 @@
 
 
 # ------------------------------------------------------------
-# 2. ПОЛЬЗОВАТЕЛЬ DEPLOYER
-# ------------------------------------------------------------
-
-- name: Create deployer user
-  ansible.builtin.user:
-    name: deployer
-    shell: /bin/bash
-    groups:
-      - sudo
-    append: true
-    create_home: true
-    state: present
-  tags:
-    - users
-
-- name: Configure passwordless sudo for deployer
-  ansible.builtin.copy:
-    dest: /etc/sudoers.d/deployer
-    content: "deployer ALL=(ALL) NOPASSWD:ALL\n"
-    owner: root
-    group: root
-    mode: "0440"
-    validate: "/usr/sbin/visudo -cf %s"
-  tags:
-    - users
-
-- name: Add SSH public key for deployer
-  ansible.posix.authorized_key:
-    user: deployer
-    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/fitflow-key.pem.pub') }}"
-    state: present
-  tags:
-    - users
-
-
-# ------------------------------------------------------------
-# 3. СИСТЕМНЫЕ НАСТРОЙКИ
+# 2. СИСТЕМНЫЕ НАСТРОЙКИ
 # ------------------------------------------------------------
 
 - name: Set timezone to UTC
@@ -84,7 +49,7 @@
 
 
 # ------------------------------------------------------------
-# 4. NODE EXPORTER
+# 3. NODE EXPORTER — ПРОВЕРКА АРХИВА
 # ------------------------------------------------------------
 
 - name: Check Node Exporter archive on controller
@@ -106,6 +71,11 @@
       {{ node_exporter_archive }}
   tags:
     - monitoring_agent
+
+
+# ------------------------------------------------------------
+# 4. NODE EXPORTER — УСТАНОВКА
+# ------------------------------------------------------------
 
 - name: Create Node Exporter system user
   ansible.builtin.user:
@@ -149,6 +119,11 @@
   tags:
     - monitoring_agent
 
+
+# ------------------------------------------------------------
+# 5. NODE EXPORTER — SYSTEMD
+# ------------------------------------------------------------
+
 - name: Create Node Exporter systemd service
   ansible.builtin.copy:
     dest: /etc/systemd/system/node_exporter.service
@@ -168,7 +143,7 @@
       Group=node_exporter
       ExecStart=/usr/local/bin/node_exporter
       Restart=on-failure
-      RestartSec=5s
+      RestartSec=5
       NoNewPrivileges=true
       PrivateTmp=true
       ProtectSystem=strict
@@ -188,6 +163,16 @@
     daemon_reload: true
   tags:
     - monitoring_agent
+
+- name: Apply Node Exporter changes
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - monitoring_agent
+
+
+# ------------------------------------------------------------
+# 6. NODE EXPORTER — ОЧИСТКА ВРЕМЕННЫХ ФАЙЛОВ
+# ------------------------------------------------------------
 
 - name: Remove Node Exporter temporary archive
   ansible.builtin.file:
