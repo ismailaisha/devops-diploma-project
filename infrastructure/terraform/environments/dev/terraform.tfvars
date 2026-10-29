@@ -1,6 +1,0 @@
-aws_region = "us-east-2"
-project_name = "fitflow"
-environment = "dev"
-instance_type = "t3.micro"
-ssh_key_name = "fitflow-key"
-s3_bucket_name = "fitflow-backups-080403789929"
