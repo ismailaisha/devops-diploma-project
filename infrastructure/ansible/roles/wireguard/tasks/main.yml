@@ -1,8 +1,6 @@
 ---
 # ============================================================
-# WireGuard
-# Этап 1: подготовка ключей
-# Этап 2: создание конфигурации
+# WireGuard: установка и подготовка каталога
 # ============================================================
 
 - name: "WireGuard: Установка пакетов"
@@ -12,12 +10,24 @@
       - wireguard-tools
     state: present
     update_cache: true
+    cache_valid_time: 3600
   tags:
     - wireguard
 
-# ------------------------------------------------------------
-# ЭТАП 1. Ключи
-# ------------------------------------------------------------
+- name: "WireGuard: Создание защищённого каталога"
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags:
+    - wireguard
+    - wireguard_keys
+
+# ============================================================
+# Этап 1. Ключи
+# ============================================================
 
 - name: "WireGuard: Проверка существования private key"
   ansible.builtin.stat:
@@ -28,7 +38,7 @@
     - wireguard_keys
 
 - name: "WireGuard: Генерация private key"
-  ansible.builtin.shell:
+  ansible.builtin.command:
     cmd: wg genkey
   register: wg_private_key_generated
   when: not wg_private_key_file.stat.exists
@@ -51,6 +61,16 @@
     - wireguard
     - wireguard_keys
 
+- name: "WireGuard: Настройка прав private key"
+  ansible.builtin.file:
+    path: /etc/wireguard/private.key
+    owner: root
+    group: root
+    mode: "0600"
+  tags:
+    - wireguard
+    - wireguard_keys
+
 - name: "WireGuard: Чтение private key"
   ansible.builtin.slurp:
     src: /etc/wireguard/private.key
@@ -60,9 +80,10 @@
     - wireguard
     - wireguard_keys
 
-- name: "WireGuard: Генерация public key"
-  ansible.builtin.shell:
-    cmd: "printf '%s' '{{ wg_private_key_slurped.content | b64decode | trim }}' | wg pubkey"
+- name: "WireGuard: Получение public key"
+  ansible.builtin.command:
+    cmd: wg pubkey
+    stdin: "{{ wg_private_key_slurped.content | b64decode | trim }}"
   register: wg_public_key_generated
   changed_when: false
   no_log: true
@@ -90,13 +111,11 @@
     - wireguard
     - wireguard_keys
 
-# ------------------------------------------------------------
-# ЭТАП 2. Конфигурация
-#
-# Этот task выполняется после всех предыдущих tasks на всех
-# хостах при стандартной strategy=linear.
-# Поэтому hostvars содержит public key каждого сервера.
-# ------------------------------------------------------------
+# ============================================================
+# Этап 2. Конфигурация
+# При strategy=linear ключи подготавливаются на всех хостах
+# текущего play до перехода к созданию конфигурации.
+# ============================================================
 
 - name: "WireGuard: Создание конфигурации wg0"
   ansible.builtin.template:
@@ -105,7 +124,7 @@
     owner: root
     group: root
     mode: "0600"
-
+  no_log: true
   notify:
     - Restart WireGuard
   tags:
@@ -113,7 +132,7 @@
     - wireguard_config
 
 - name: "WireGuard: Разрешение UDP 51820 в UFW"
-  ansible.builtin.ufw:
+  community.general.ufw:
     rule: allow
     port: "51820"
     proto: udp
@@ -126,6 +145,11 @@
     name: wg-quick@wg0
     enabled: true
     state: started
+  tags:
+    - wireguard
+
+- name: "WireGuard: Применение ожидающих обработчиков"
+  ansible.builtin.meta: flush_handlers
   tags:
     - wireguard
 
