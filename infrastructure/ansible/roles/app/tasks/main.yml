@@ -1,165 +1,122 @@
 ---
-# ─────────────────────────────────────────
-# Роль app — настройка App Server
-# Устанавливает Docker и запускает
-# приложение через docker-compose
-# ─────────────────────────────────────────
+# ============================================================
+# Подготовка App Server: Docker, firewall, каталог приложения
+# ============================================================
 
-# ─── Установка Docker ───────────────────
+- name: Check supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['architecture'] == 'x86_64'
+    fail_msg: "This role currently supports Ubuntu x86_64."
 
-# Добавляем официальный GPG ключ Docker
-# Без него Ubuntu не доверяет пакетам от Docker
-- name: Add Docker GPG key
-  apt_key:
+# ============================================================
+# DOCKER
+# ============================================================
+
+- name: Install Docker repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download Docker repository signing key
+  ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
-  tags: docker
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
 
-# Добавляем официальный репозиторий Docker
-# По умолчанию в Ubuntu нет актуальной версии Docker
-- name: Add Docker repository
-  apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
-    state: present
-  tags: docker
+- name: Configure Docker APT repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/ubuntu
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: stable
+      Architectures: amd64
+      Signed-By: /etc/apt/keyrings/docker.asc
 
-# Устанавливаем Docker Engine
-- name: Install Docker
-  apt:
+- name: Install Docker Engine and plugins
+  ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
+      - docker-buildx-plugin
       - docker-compose-plugin
     state: present
     update_cache: true
-  tags: docker
 
-# Запускаем Docker и добавляем в автозапуск
-# При перезагрузке сервера Docker стартует сам
 - name: Start and enable Docker
-  service:
+  ansible.builtin.systemd:
     name: docker
     state: started
     enabled: true
-  tags: docker
 
-# Добавляем пользователя deployer в группу docker
-# Чтобы запускать docker команды без sudo
-- name: Add deployer to docker group
-  user:
-    name: deployer
+- name: Add connection user to Docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
     groups: docker
     append: true
-  tags: docker
 
-# ─── Открываем порты в UFW ──────────────
+# ============================================================
+# FIREWALL
+# ============================================================
 
-# HTTP — для фронтенда
-- name: UFW - allow HTTP
-  ufw:
+- name: Allow HTTP
+  community.general.ufw:
     rule: allow
     port: "80"
     proto: tcp
-  tags: firewall
 
-# HTTPS — для SSL
-- name: UFW - allow HTTPS
-  ufw:
+- name: Allow HTTPS
+  community.general.ufw:
     rule: allow
     port: "443"
     proto: tcp
-  tags: firewall
 
-# API порт — для FastAPI
-- name: UFW - allow API
-  ufw:
-    rule: allow
-    port: "8000"
-    proto: tcp
-  tags: firewall
+# API and Redis will be accessed inside the Docker network.
+# UFW activation is handled separately from this role.
 
-# ─── Деплой приложения ──────────────────
+# ============================================================
+# APPLICATION DIRECTORY
+# ============================================================
 
-# Создаём папку для приложения на сервере
-- name: Create app directory
-  file:
+- name: Create application directory
+  ansible.builtin.file:
     path: /opt/fitflow
     state: directory
-    owner: ubuntu
-    group: ubuntu
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0755"
-  tags: deploy
 
-# Копируем docker-compose.yml на сервер
-- name: Copy docker-compose.yml
-  copy:
-    src: "{{ playbook_dir }}/../../../docker-compose.yml"
-    dest: /opt/fitflow/docker-compose.yml
-    owner: ubuntu
-    group: ubuntu
-    mode: "0644"
-  tags: deploy
+# ============================================================
+# CHECKS
+# ============================================================
 
-# Копируем .env файл на сервер
-- name: Copy .env file
-  copy:
-    src: "{{ playbook_dir }}/../../../.env"
-    dest: /opt/fitflow/.env
-    owner: ubuntu
-    group: ubuntu
-    mode: "0600"
-  tags: deploy
+- name: Verify Docker Engine
+  ansible.builtin.command:
+    cmd: docker info
+  changed_when: false
 
-# Устанавливаем acl — нужен для переключения
-# между пользователями через become_user
-# Без него Ansible не может создать временные файлы
-- name: Установка пакета acl
-  apt:
-    name: acl
-    state: present
-  tags: deploy
-
-
-
-  # 1. Сначала проверяем и настраиваем Swap (чтобы сервер не завис)
-- name: Проверяем, существует ли уже swap-файл
-  stat:
-    path: /swapfile
-  register: swap_file_check
-
-- name: Создаем пустой файл подкачки размером 2 ГБ
-  command: fallocate -l 2G /swapfile
-  when: not swap_file_check.stat.exists
-
-- name: Устанавливаем безопасные права доступа (только для root)
-  file:
-    path: /swapfile
-    owner: root
-    group: root
-    mode: '0600'
-
-- name: Форматируем файл как пространство swap
-  command: mkswap /swapfile
-  when: not swap_file_check.stat.exists
-
-- name: Включаем swap-файл в текущей сессии
-  command: swapon /swapfile
-  when: not swap_file_check.stat.exists
-
-- name: Добавляем swap в /etc/fstab для автоматического включения при перезагрузке
-  mount:
-    name: none
-    src: /swapfile
-    fstype: swap
-    opts: sw
-    state: present
-
-# 2. И только теперь запускаем само приложение через Docker Compose
-- name: Start application
-  shell: |
-    cd /opt/fitflow
-    docker compose up -d
-  become: true
-  become_user: ubuntu
-  tags: deploy
+- name: Verify Docker Compose
+  ansible.builtin.command:
+    cmd: docker compose version
+  changed_when: false

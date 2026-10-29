@@ -1,0 +1,8 @@
+---
+- name: Prepare FitFlow application server
+  hosts: app
+  become: true
+  gather_facts: true
+
+  roles:
+    - app
