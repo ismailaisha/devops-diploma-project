@@ -1,21 +1,34 @@
 ---
-# ─────────────────────────────────────────
-# Роль common — базовая настройка сервера
-# Выполняется на ВСЕХ серверах
-# ─────────────────────────────────────────
+# ============================================================
+# 1. ПРОВЕРКИ ДО ИЗМЕНЕНИЯ СЕРВЕРА
+# ============================================================
 
-# Обновляем список пакетов
-# Как apt update на Ubuntu
+- name: Check Node Exporter archive on controller
+  ansible.builtin.stat:
+    path: "{{ node_exporter_archive }}"
+  delegate_to: localhost
+  become: false
+  register: node_exporter_archive_file
+
+- name: Verify Node Exporter archive exists
+  ansible.builtin.assert:
+    that:
+      - node_exporter_archive_file.stat.exists
+      - node_exporter_archive_file.stat.isreg | default(false)
+      - (node_exporter_archive_file.stat.size | default(0)) > 0
+    fail_msg: "Archive not found: {{ node_exporter_archive }}"
+
+# ============================================================
+# 2. БАЗОВЫЕ ПАКЕТЫ
+# ============================================================
+
 - name: Update apt cache
-  apt:
+  ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
-  tags: packages
 
-# Устанавливаем базовые пакеты
-# которые нужны на каждом сервере
 - name: Install base packages
-  apt:
+  ansible.builtin.apt:
     name:
       - curl
       - wget
@@ -30,91 +43,160 @@
       - lsb-release
       - python3-pip
     state: present
-  tags: packages
 
-# Создаём пользователя deployer
-# Jenkins будет деплоить через этого пользователя
-# не через root — это безопасно
-- name: Create deployer user
-  user:
-    name: deployer
-    shell: /bin/bash
-    groups: sudo
-    append: true
-    create_home: true
-  tags: users
+# ============================================================
+# 3. СИСТЕМНЫЕ НАСТРОЙКИ
+# ============================================================
 
-# Добавляем SSH ключ для deployer
-# Чтобы Jenkins мог подключаться без пароля
-- name: Add SSH key for deployer
-  authorized_key:
-    user: deployer
-    key: "{{ lookup('file', '~/.ssh/fitflow.pub') }}"
-    state: present
-  tags: users
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
 
-# Настраиваем timezone
-- name: Set timezone to UTC
-  timezone:
-    name: UTC
-  tags: system
+# ============================================================
+# 4. SSH
+# Существующих пользователей и authorized_keys не изменяем.
+# ============================================================
 
-# ─────────────────────────────────────────
-# Настройка UFW файрвола
-# UFW — Uncomplicated Firewall
-# Простой интерфейс для iptables
-# ─────────────────────────────────────────
+- name: Create SSH configuration directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
-# Запрещаем всё входящее по умолчанию
-- name: UFW - deny all incoming
-  ufw:
-    direction: incoming
-    policy: deny
-  tags: firewall
+- name: Configure SSH authentication policy
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-fitflow.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      PubkeyAuthentication yes
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+  notify: Reload SSH
 
-# Разрешаем всё исходящее
-- name: UFW - allow all outgoing
-  ufw:
-    direction: outgoing
-    policy: allow
-  tags: firewall
+- name: Include managed SSH policy before other settings
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Include /etc/ssh/sshd_config.d/00-fitflow.conf$'
+    line: "Include /etc/ssh/sshd_config.d/00-fitflow.conf"
+    insertbefore: BOF
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Reload SSH
 
-# Разрешаем SSH — обязательно до включения UFW
-# Иначе потеряем доступ к серверу!
-- name: UFW - allow SSH
-  ufw:
+- name: Validate complete SSH configuration
+  ansible.builtin.command:
+    cmd: /usr/sbin/sshd -t
+  changed_when: false
+
+# ============================================================
+# 5. ПРАВИЛА UFW
+# Включение UFW пока оставляем отдельным этапом:
+# сначала согласуем правила Docker, K3s и WireGuard.
+# Уже включённый UFW эта роль не отключает.
+# ============================================================
+
+- name: Allow SSH
+  community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
-  tags: firewall
 
-# Включаем UFW
-- name: UFW - enable
-  ufw:
-    state: enabled
-  tags: firewall
+- name: Allow WireGuard
+  community.general.ufw:
+    rule: allow
+    port: "51820"
+    proto: udp
 
-# ─────────────────────────────────────────
-# Настройка SSH безопасности
-# ─────────────────────────────────────────
+- name: Allow Node Exporter from monitoring server
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ node_exporter_monitoring_ip }}"
+    to_port: "9100"
+    proto: tcp
 
-# Отключаем вход по паролю — только по ключу
-# Это защита от брутфорс атак
-- name: Disable SSH password authentication
-  lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: "^PasswordAuthentication"
-    line: "PasswordAuthentication no"
+# ============================================================
+# 6. NODE EXPORTER
+# ============================================================
+
+- name: Create Node Exporter group
+  ansible.builtin.group:
+    name: node_exporter
+    system: true
     state: present
-  notify: Restart SSH
-  tags: security
 
-# Отключаем вход от root напрямую
-- name: Disable root SSH login
-  lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: "^PermitRootLogin"
-    line: "PermitRootLogin no"
+- name: Create Node Exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    group: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
     state: present
-  notify: Restart SSH
-  tags: security
+
+- name: Create Node Exporter installation directory
+  ansible.builtin.file:
+    path: "{{ node_exporter_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Extract Node Exporter from controller archive
+  ansible.builtin.unarchive:
+    src: "{{ node_exporter_archive }}"
+    dest: "{{ node_exporter_install_dir }}"
+    owner: root
+    group: root
+    creates: >-
+      {{ node_exporter_install_dir }}/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter
+
+- name: Install Node Exporter binary
+  ansible.builtin.copy:
+    src: >-
+      {{ node_exporter_install_dir }}/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter
+    dest: /usr/local/bin/node_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart Node Exporter
+
+- name: Create Node Exporter systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus Node Exporter
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=simple
+      User=node_exporter
+      Group=node_exporter
+      ExecStart=/usr/local/bin/node_exporter
+      Restart=on-failure
+      RestartSec=5s
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart Node Exporter
+
+- name: Enable and start Node Exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: true
+    state: started
+    daemon_reload: true
