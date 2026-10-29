@@ -1,357 +1,274 @@
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name = "virtualization-type"
-    values = ["hvm"]
-  }
-  
-}
+# ============================================================
+# CURRENT PUBLIC IP
+# ============================================================
 
 data "http" "my_ip" {
   url = "https://ipv4.icanhazip.com"
 }
 
-data "http" "github_ips" {
-  url = "https://api.github.com/meta"
-}
+# ============================================================
+# LOCAL SETTINGS
+# ============================================================
 
 locals {
-  github_webhook_ips = [
-    for ip in jsondecode(data.http.github_ips.response_body).hooks : ip
-    if !can(regex(":", ip))
+  admin_ip = "${trimspace(data.http.my_ip.response_body)}/32"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  servers = {
+    app = {
+      name       = "${var.project_name}-app"
+      size       = var.app_vm_size
+      private_ip = cidrhost(var.subnet_address_prefixes[0], 10)
+    }
+
+    jenkins = {
+      name       = "${var.project_name}-jenkins"
+      size       = var.jenkins_vm_size
+      private_ip = cidrhost(var.subnet_address_prefixes[0], 11)
+    }
+  }
+}
+
+# ============================================================
+# RESOURCE GROUP
+# ============================================================
+
+resource "azurerm_resource_group" "main" {
+  name     = "${var.project_name}-${var.environment}-rg"
+  location = var.location
+  tags     = local.tags
+}
+
+# ============================================================
+# NETWORK
+# ============================================================
+
+resource "azurerm_virtual_network" "main" {
+  name                = "${var.project_name}-vnet"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  address_space       = var.vnet_address_space
+  tags                = local.tags
+}
+
+resource "azurerm_subnet" "servers" {
+  name                 = "${var.project_name}-servers-subnet"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = var.subnet_address_prefixes
+}
+
+# ============================================================
+# STATIC PUBLIC IP ADDRESSES
+# ============================================================
+
+resource "azurerm_public_ip" "servers" {
+  for_each = local.servers
+
+  name                = "${each.value.name}-pip"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  allocation_method = "Static"
+  sku               = "Standard"
+
+  tags = local.tags
+}
+
+# ============================================================
+# NETWORK SECURITY GROUPS
+# ============================================================
+
+resource "azurerm_network_security_group" "servers" {
+  for_each = local.servers
+
+  name                = "${each.value.name}-nsg"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  tags = local.tags
+}
+
+# SSH from your current public IP to both servers
+resource "azurerm_network_security_rule" "admin_ssh" {
+  for_each = local.servers
+
+  name                        = "Allow-Admin-SSH"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "22"
+  source_address_prefix       = local.admin_ip
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers[each.key].name
+}
+
+# WireGuard tunnel entry point on both servers
+resource "azurerm_network_security_rule" "wireguard" {
+  for_each = local.servers
+
+  name                        = "Allow-WireGuard"
+  priority                    = 110
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Udp"
+  source_port_range           = "*"
+  destination_port_range      = "51820"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers[each.key].name
+}
+
+# Public access to the application
+resource "azurerm_network_security_rule" "app_web" {
+  name                        = "Allow-HTTP-HTTPS"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_ranges     = ["80", "443"]
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers["app"].name
+}
+
+# SSH deployment from Jenkins over the Azure private network
+resource "azurerm_network_security_rule" "jenkins_to_app" {
+  name                        = "Allow-Jenkins-SSH"
+  priority                    = 130
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "22"
+  source_address_prefix       = "${local.servers.jenkins.private_ip}/32"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers["app"].name
+}
+
+# Jenkins UI accessible from your current public IP
+resource "azurerm_network_security_rule" "jenkins_ui" {
+  name                        = "Allow-Admin-Jenkins"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8080"
+  source_address_prefix       = local.admin_ip
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers["jenkins"].name
+}
+
+# Override the default broad inbound allowance within the VNet
+resource "azurerm_network_security_rule" "deny_other_inbound" {
+  for_each = local.servers
+
+  name                        = "Deny-Other-Inbound"
+  priority                    = 4096
+  direction                   = "Inbound"
+  access                      = "Deny"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.servers[each.key].name
+}
+
+# ============================================================
+# NETWORK INTERFACES
+# ============================================================
+
+resource "azurerm_network_interface" "servers" {
+  for_each = local.servers
+
+  name                = "${each.value.name}-nic"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  ip_configuration {
+    name                          = "primary"
+    subnet_id                     = azurerm_subnet.servers.id
+    private_ip_address_allocation = "Static"
+    private_ip_address            = each.value.private_ip
+    public_ip_address_id          = azurerm_public_ip.servers[each.key].id
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_network_interface_security_group_association" "servers" {
+  for_each = local.servers
+
+  network_interface_id      = azurerm_network_interface.servers[each.key].id
+  network_security_group_id = azurerm_network_security_group.servers[each.key].id
+}
+
+# ============================================================
+# UBUNTU VIRTUAL MACHINES
+# ============================================================
+
+resource "azurerm_linux_virtual_machine" "servers" {
+  for_each = local.servers
+
+  name                = each.value.name
+  computer_name       = each.value.name
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  size                = each.value.size
+
+  admin_username                  = var.admin_username
+  disable_password_authentication = true
+
+  network_interface_ids = [
+    azurerm_network_interface.servers[each.key].id
+  ]
+
+  admin_ssh_key {
+    username   = var.admin_username
+    public_key = file(pathexpand(var.ssh_public_key_path))
+  }
+
+  os_disk {
+    name                 = "${each.value.name}-osdisk"
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+    disk_size_gb         = 32
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "ubuntu-24_04-lts"
+    sku       = "server"
+    version   = "latest"
+  }
+
+  tags = merge(local.tags, {
+    Role = each.key
+  })
+
+  depends_on = [
+    azurerm_network_interface_security_group_association.servers,
+    azurerm_network_security_rule.admin_ssh,
+    azurerm_network_security_rule.wireguard,
+    azurerm_network_security_rule.app_web,
+    azurerm_network_security_rule.jenkins_to_app,
+    azurerm_network_security_rule.jenkins_ui,
+    azurerm_network_security_rule.deny_other_inbound
   ]
 }
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support = true
-
-  tags = {
-    Name = "$(var.project_name)-vpc"
-    Environment = var.environment
-    Project = var.project_name
-  }
-}
-
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = "${var.aws_region}a"
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "$(var.project_name)-public-subnet"
-    Environment = var.environment
-    Project = var.project_name
-  }
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "$(var.project_name)-igw"
-    Environment = var.environment
-    Project = var.project_name
-  }
-  
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
-  }
-
-  tags = {
-    Name = "$(var.project_name)-public-rt"
-    Environment = var.environment
-    Project = var.project_name
-  }
-}
-
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
-  
-}
-
-resource "aws_security_group" "app_server" {
-  name        = "$(var.project_name)-app-sg"
-  description = "Security group for $(var.project_name)"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTP traffic from anywhere"
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTPS traffic from anywhere"
-  }
-
- # API порт — доступен всем
-  ingress {
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "FastAPI"
-  }
-
-  # SSH — только с хостового IP
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
-    description = "SSH only from my IP"
-  }
-
-  # SSH с Jenkins сервера для деплоя
-ingress {
-  from_port       = 22
-  to_port         = 22
-  protocol        = "tcp"
-  security_groups = [aws_security_group.jenkins.id]
-  description     = "SSH from Jenkins for deployment"
-}
-
-  # Безопасное правило для Фронтенда (доступ только через VPN)
-  ingress {
-    description     = "Kubernetes NodePort for Frontend via WireGuard VPN"
-    from_port       = 30080
-    to_port         = 30080
-    protocol        = "tcp"
-    cidr_blocks     = ["0.0.0.0/0"] 
-  }
-
-  # Безопасное правило для Бэкенда (доступ только через VPN)
-  ingress {
-    description     = "Kubernetes NodePort for FastAPI Backend via WireGuard VPN"
-    from_port       = 30008
-    to_port         = 30008
-    protocol        = "tcp"
-    cidr_blocks     = ["0.0.0.0/0"] 
-  }
-
-  # WireGuard VPN
-  ingress {
-    from_port   = 51820
-    to_port     = 51820
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "WireGuard VPN"
-  }
-
-  # Исходящий трафик — всё разрешено
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "All outbound traffic"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-app-sg"
-    Environment = var.environment
-    Project     = var.project_name
-  }
-}
-
-# ─────────────────────────────────────────
-# Security Group для Jenkins Server
-# ─────────────────────────────────────────
-resource "aws_security_group" "jenkins" {
-  name        = "${var.project_name}-jenkins-sg"
-  description = "Security group for FitFlow Jenkins Server"
-  vpc_id      = aws_vpc.main.id
-
-  # Jenkins UI — только с твоего IP
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
-    description = "Jenkins UI"
-  }
-
-  # SSH — только с твоего IP
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["${chomp(data.http.my_ip.response_body)}/32"]
-    description = "SSH only from my IP"
-  }
-
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = local.github_webhook_ips
-    description = "GitHub webhook - dynamic from GitHub API"
-  }
-
-  # WireGuard VPN
-  ingress {
-    from_port   = 51820
-    to_port     = 51820
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "WireGuard VPN"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "All outbound traffic"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-jenkins-sg"
-    Environment = var.environment
-    Project     = var.project_name
-  }
-}
-
-resource "aws_key_pair" "fitflow" {
-  key_name   = var.ssh_key_name
-  public_key = file("~/.ssh/fitflow.pub")
-
-  tags = {
-    Name    = var.ssh_key_name
-    Project = var.project_name
-  }
-}
-
-# ─────────────────────────────────────────
-# App Server — основной сервер приложения
-# ─────────────────────────────────────────
-resource "aws_instance" "app_server" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
-  subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.app_server.id]
-  key_name               = aws_key_pair.fitflow.key_name
-
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-app-server"
-    Environment = var.environment
-    Project     = var.project_name
-    Role        = "app"
-  }
-  
-  lifecycle {
-    ignore_changes = [ami]
-  }
-}
-
-# ─────────────────────────────────────────
-# Jenkins Server — CI/CD сервер
-# ─────────────────────────────────────────
-resource "aws_instance" "jenkins" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
-  subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.jenkins.id]
-  key_name               = aws_key_pair.fitflow.key_name
-
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-jenkins"
-    Environment = var.environment
-    Project     = var.project_name
-    Role        = "jenkins"
-  }
-
-  lifecycle {
-    ignore_changes = [ami]
-  }
-}
-
-# ─────────────────────────────────────────
-# Elastic IP — статический публичный IP
-# Не меняется при перезапуске сервера
-# ─────────────────────────────────────────
-resource "aws_eip" "app_server" {
-  instance = aws_instance.app_server.id
-  domain   = "vpc"
-
-  tags = {
-    Name    = "${var.project_name}-app-eip"
-    Project = var.project_name
-  }
-}
-
-resource "aws_eip" "jenkins" {
-  instance = aws_instance.jenkins.id
-  domain   = "vpc"
-
-  tags = {
-    Name    = "${var.project_name}-jenkins-eip"
-    Project = var.project_name
-  }
-}
-
-# ─────────────────────────────────────────
-# S3 Bucket — хранилище для бэкапов БД
-# ─────────────────────────────────────────
-resource "aws_s3_bucket" "backups" {
-  bucket        = var.s3_bucket_name
-  force_destroy = true
-
-  tags = {
-    Name        = var.s3_bucket_name
-    Environment = var.environment
-    Project     = var.project_name
-  }
-}
-
-# Закрываем публичный доступ к бэкапам
-resource "aws_s3_bucket_public_access_block" "backups" {
-  bucket = aws_s3_bucket.backups.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# Версионирование — храним историю бэкапов
-resource "aws_s3_bucket_versioning" "backups" {
-  bucket = aws_s3_bucket.backups.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
