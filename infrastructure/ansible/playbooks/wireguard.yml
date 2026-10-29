@@ -1,0 +1,10 @@
+---
+- name: Configure WireGuard between Azure and local VMs
+  hosts: azure:local_vms
+  become: true
+  gather_facts: true
+  strategy: linear
+  any_errors_fatal: true
+
+  roles:
+    - wireguard
