@@ -1,11 +1,12 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5, < 2.0"
 
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
     }
+
     http = {
       source  = "hashicorp/http"
       version = "~> 3.0"
@@ -13,7 +14,8 @@ terraform {
   }
 }
 
-provider "aws" {
-  region  = var.aws_region
-  profile = "aisha-devops"
+provider "azurerm" {
+  features {}
+
+  subscription_id = var.subscription_id
 }
