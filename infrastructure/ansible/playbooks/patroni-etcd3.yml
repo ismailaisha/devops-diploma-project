@@ -1,0 +1,188 @@
+---
+- name: Prepare Patroni migration to etcd3
+  hosts: database
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Read existing Patroni configuration
+      ansible.builtin.slurp:
+        src: /etc/patroni/patroni.yml
+      register: patroni_config_file
+      no_log: true
+
+    - name: Parse existing configuration
+      ansible.builtin.set_fact:
+        patroni_existing_config: >-
+          {{ patroni_config_file.content | b64decode | from_yaml }}
+      no_log: true
+
+    - name: Check expected configuration
+      ansible.builtin.assert:
+        that:
+          - patroni_existing_config.scope == 'fitflow-cluster'
+          - patroni_existing_config.namespace == '/db/'
+          - patroni_existing_config.postgresql.data_dir == '/data/patroni'
+          - "'etcd' in patroni_existing_config"
+        fail_msg: >-
+          Configuration differs from the expected pre-migration state.
+          Stop and inspect it before continuing.
+      no_log: true
+
+    - name: Check that the etcd3 namespace is empty
+      ansible.builtin.command:
+        argv:
+          - etcdctl
+          - --endpoints=http://127.0.0.1:2379
+          - get
+          - /db/fitflow-cluster/
+          - --prefix
+          - --keys-only
+      environment:
+        ETCDCTL_API: "3"
+      register: patroni_etcd3_keys
+      changed_when: false
+
+    - name: Refuse migration into an occupied namespace
+      ansible.builtin.assert:
+        that:
+          - patroni_etcd3_keys.stdout | trim | length == 0
+        fail_msg: >-
+          The etcd3 namespace already contains keys.
+          Do not delete them; inspect the cluster first.
+
+    - name: Install etcd3 support without upgrading Patroni
+      ansible.builtin.pip:
+        name:
+          - "patroni[etcd3]==4.1.4"
+          - psycopg2-binary
+        state: present
+        extra_args: "--break-system-packages"
+
+    - name: Stop Patroni on both database nodes
+      ansible.builtin.systemd:
+        name: patroni
+        state: stopped
+
+    - name: Verify PostgreSQL is stopped before changing coordination
+      ansible.builtin.command:
+        argv:
+          - /usr/lib/postgresql/15/bin/pg_ctl
+          - status
+          - -D
+          - /data/patroni
+      become_user: postgres
+      register: patroni_pg_status
+      changed_when: false
+      failed_when: patroni_pg_status.rc != 3
+
+    - name: Build configuration using etcd3
+      ansible.builtin.set_fact:
+        patroni_migrated_config: >-
+          {{
+            (
+              patroni_existing_config
+              | dict2items
+              | rejectattr('key', 'equalto', 'etcd')
+              | list
+              | items2dict
+            )
+            | combine({
+                'etcd3': {
+                  'host': '127.0.0.1:2379'
+                }
+              })
+          }}
+      no_log: true
+
+    - name: Write configuration while preserving existing settings
+      ansible.builtin.copy:
+        content: "{{ patroni_migrated_config | to_nice_yaml(indent=2) }}"
+        dest: /etc/patroni/patroni.yml
+        owner: postgres
+        group: postgres
+        mode: "0600"
+        backup: true
+      no_log: true
+
+    - name: Remove obsolete AWS backup schedule
+      ansible.builtin.cron:
+        name: "FitFlow database backup"
+        user: postgres
+        state: absent
+
+    - name: Remove obsolete S3 backup script
+      ansible.builtin.file:
+        path: /usr/local/bin/fitflow-backup.sh
+        state: absent
+
+
+- name: Start the existing primary first
+  hosts: pg_master
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Start Patroni on primary
+      ansible.builtin.systemd:
+        name: patroni
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for primary role and leader lock
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8008/primary
+        status_code: 200
+        return_content: false
+      register: patroni_primary_health
+      until: patroni_primary_health.status | default(0) == 200
+      retries: 60
+      delay: 2
+
+    - name: Verify PostgreSQL accepts connections
+      ansible.builtin.command:
+        argv:
+          - /usr/lib/postgresql/15/bin/pg_isready
+          - -h
+          - 127.0.0.1
+          - -p
+          - "5432"
+      changed_when: false
+
+
+- name: Start the existing replica after primary is ready
+  hosts: pg_replica
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Start Patroni on replica
+      ansible.builtin.systemd:
+        name: patroni
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for replica readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8008/replica
+        status_code: 200
+        return_content: false
+      register: patroni_replica_health
+      until: patroni_replica_health.status | default(0) == 200
+      retries: 60
+      delay: 2
+
+    - name: Verify PostgreSQL accepts connections
+      ansible.builtin.command:
+        argv:
+          - /usr/lib/postgresql/15/bin/pg_isready
+          - -h
+          - 127.0.0.1
+          - -p
+          - "5432"
+      changed_when: false
