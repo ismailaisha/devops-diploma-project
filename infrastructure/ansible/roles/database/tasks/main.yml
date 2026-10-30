@@ -238,3 +238,8 @@
   until: database_health.status | default(0) == 200
   retries: 60
   delay: 2
+
+- name: Configure FitFlow application database
+  ansible.builtin.import_tasks: fitflow.yml
+  tags:
+    - fitflow_database

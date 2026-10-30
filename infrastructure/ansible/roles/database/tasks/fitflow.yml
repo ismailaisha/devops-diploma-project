@@ -1,0 +1,70 @@
+---
+- name: Validate application database password
+  ansible.builtin.assert:
+    that:
+      - fitflow_db_password is defined
+      - fitflow_db_password | default('') | length >= 24
+    fail_msg: "Set fitflow_db_password in Ansible Vault."
+  no_log: true
+
+- name: Detect whether this PostgreSQL node is primary
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+    query: "SELECT NOT pg_is_in_recovery() AS is_primary"
+  become: true
+  become_user: postgres
+  register: fitflow_node_status
+  changed_when: false
+
+- name: Create FitFlow application user on primary
+  community.postgresql.postgresql_user:
+    login_db: postgres
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+    name: fitflow
+    password: "{{ fitflow_db_password }}"
+    role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION
+    no_password_changes: true
+    state: present
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
+  become: true
+  become_user: postgres
+  when: fitflow_node_status.query_result[0].is_primary | bool
+  no_log: true
+
+- name: Create FitFlow database on primary
+  community.postgresql.postgresql_db:
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+    name: fitflow
+    owner: fitflow
+    encoding: UTF8
+    state: present
+  become: true
+  become_user: postgres
+  when: fitflow_node_status.query_result[0].is_primary | bool
+
+- name: Verify FitFlow database owner on primary
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+    query: >-
+      SELECT datname, pg_get_userbyid(datdba) AS owner
+      FROM pg_database
+      WHERE datname = 'fitflow'
+  become: true
+  become_user: postgres
+  when: fitflow_node_status.query_result[0].is_primary | bool
+  register: fitflow_database_result
+  changed_when: false
+
+- name: Check that FitFlow owns its database
+  ansible.builtin.assert:
+    that:
+      - fitflow_database_result.query_result | length == 1
+      - fitflow_database_result.query_result[0].owner == 'fitflow'
+  when: fitflow_node_status.query_result[0].is_primary | bool
