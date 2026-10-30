@@ -1,0 +1,24 @@
+---
+- name: Configure firewall for local etcd cluster
+  hosts: local_vms
+  become: true
+  gather_facts: false
+
+  vars:
+    etcd_member_addresses:
+      - "192.168.56.130"
+      - "192.168.56.135"
+      - "192.168.56.140"
+
+  tasks:
+    - name: Allow etcd traffic between local members
+      community.general.ufw:
+        rule: allow
+        direction: in
+        proto: tcp
+        from_ip: "{{ item.0 }}"
+        to_ip: "{{ ansible_host }}"
+        to_port: "{{ item.1 }}"
+      loop: "{{ etcd_member_addresses | product(['2379', '2380']) | list }}"
+      loop_control:
+        label: "{{ item.0 }} -> {{ ansible_host }}:{{ item.1 }}"
