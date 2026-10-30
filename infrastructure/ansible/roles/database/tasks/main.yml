@@ -1,158 +1,186 @@
 ---
-# ─────────────────────────────────────────
-# Роль database — настройка PostgreSQL
-# с репликацией через Patroni
-# Выполняется на pg_master и pg_replica
-# ─────────────────────────────────────────
+# PostgreSQL 15 + Patroni с etcd3.
+# Конфигурация самого кластера etcd управляется отдельно.
 
-# ─── Полная очистка и лечение APT ─────────────
+- name: Check existing Patroni configuration
+  ansible.builtin.stat:
+    path: /etc/patroni/patroni.yml
+  register: database_config_file
 
-# 1. Вычищаем старые строки, если они въелись в главный файл
-- name: Clean old postgres lines from main sources.list
-  ansible.builtin.replace:
-    path: /etc/apt/sources.list
-    regexp: '^deb .*apt\.postgresql\.org.*$'
-    replace: ''
-  tags: postgres
+- name: Read existing Patroni configuration
+  ansible.builtin.slurp:
+    src: /etc/patroni/patroni.yml
+  register: database_config_content
+  when: database_config_file.stat.exists
+  no_log: true
 
-# 2. Удаляем старые списки репозиториев СУБД, чтобы не было конфликтов
-- name: Remove old repository files from sources.list.d
-  ansible.builtin.file:
-    path: "/etc/apt/sources.list.d/{{ item }}"
-    state: absent
-  loop:
-    - apt_postgresql_org_pub_repos_apt.list
-    - pgdg.list
-  tags: postgres
+- name: Parse existing Patroni configuration
+  ansible.builtin.set_fact:
+    database_existing_config: >-
+      {{
+        (database_config_content.content | b64decode | from_yaml)
+        if database_config_file.stat.exists
+        else {}
+      }}
+  no_log: true
 
-# 3. Создаем стандартную системную папку для ключей (по стандартам Ubuntu 24.04)
-- name: Ensure keyrings directory exists
+# Существующие пароли сохраняются.
+# Для нового сервера их необходимо передать через Ansible Vault.
+- name: Resolve PostgreSQL credentials
+  ansible.builtin.set_fact:
+    database_authentication: >-
+      {{
+        database_existing_config.get('postgresql', {}).get(
+          'authentication',
+          {
+            'superuser': {
+              'username': 'postgres',
+              'password': database_superuser_password | default('')
+            },
+            'replication': {
+              'username': 'replicator',
+              'password': database_replication_password | default('')
+            }
+          }
+        )
+      }}
+  no_log: true
+
+- name: Require PostgreSQL credentials
+  ansible.builtin.assert:
+    that:
+      - database_authentication.superuser.password | length > 0
+      - database_authentication.replication.password | length > 0
+    fail_msg: >-
+      PostgreSQL credentials are missing. For a new server, supply
+      database_superuser_password and database_replication_password
+      through Ansible Vault.
+  no_log: true
+
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+      - python3-pip
+      - python3-psycopg2
+    state: present
+
+- name: Create APT keyring directory
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
+    owner: root
+    group: root
     mode: "0755"
-  tags: postgres
 
-# 4. Скачиваем официальный ключ в правильную защищенную папку
-- name: Add PostgreSQL GPG key
+- name: Install PostgreSQL repository key
   ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
     dest: /etc/apt/keyrings/postgresql-archive-keyring.asc
+    owner: root
+    group: root
     mode: "0644"
-  tags: postgres
 
-# 5. Добавляем репозиторий с обязательной привязкой к скачанному ключу
-- name: Add PostgreSQL repository
+- name: Remove legacy PostgreSQL repository file
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/apt_postgresql_org_pub_repos_apt.list
+    state: absent
+
+- name: Configure PostgreSQL repository
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/postgresql-archive-keyring.asc]
+      https://apt.postgresql.org/pub/repos/apt
+      {{ ansible_distribution_release }}-pgdg main
+    filename: fitflow-postgresql
     state: present
-    update_cache: true
-  tags: postgres
+    update_cache: false
 
-# ─── Сброс кэша и установка зависимостей ─────────────
+- name: Remove obsolete pgdg repository file
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pgdg.list
+    state: absent
 
-# 6. Принудительно очищаем сломанную память кэша, чтобы убрать ошибку unknown reason
-- name: Force purge broken apt cache memory
-  ansible.builtin.command: apt-get clean
-  changed_when: true
-  tags: postgres
-
-- name: Install dependencies
-  apt:
-    name:
-      - python3-pip
-      - python3-dev
-      - libpq-dev
-      - wget
-      - curl
-    state: present
-    update_cache: true
-  tags: packages
-
-- name: Install PostgreSQL 15
-  apt:
+- name: Install PostgreSQL and etcd packages
+  ansible.builtin.apt:
     name:
       - postgresql-15
       - postgresql-client-15
-      - postgresql-contrib-15
-    state: present
-  tags: postgres
-
-# Останавливаем PostgreSQL — Patroni будет управлять им
-- name: Stop PostgreSQL service
-  service:
-    name: postgresql
-    state: stopped
-    enabled: false
-  tags: postgres
-
-# ─── Установка etcd ──────────────────────
-- name: Install etcd and client
-  apt:
-    name:
       - etcd-server
       - etcd-client
     state: present
-  tags:
-    - etcd
-    - client
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
 
-- name: Start and enable etcd
-  service:
+# Не останавливаем работающий PostgreSQL:
+# его процессом уже управляет Patroni.
+- name: Disable standalone PostgreSQL service at boot
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: false
+
+- name: Ensure existing etcd service is running
+  ansible.builtin.systemd:
     name: etcd
     state: started
     enabled: true
-  tags:
-    - etcd
 
-# ─── Установка Patroni ───────────────────
-- name: Install Patroni
-  pip:
+- name: Install Patroni with etcd3 support
+  ansible.builtin.pip:
     name:
-      - patroni[etcd]
+      - "patroni[etcd3]==4.1.4"
       - psycopg2-binary
     state: present
     extra_args: "--break-system-packages"
-  tags: patroni
+  notify: Restart Patroni
 
-# Создаём папку для конфига Patroni
-- name: Create Patroni config directory
-  file:
+- name: Create Patroni configuration directory
+  ansible.builtin.file:
     path: /etc/patroni
     state: directory
     owner: postgres
     group: postgres
-    mode: "0755"
-  tags: patroni
+    mode: "0750"
 
-# Создаём папку для данных PostgreSQL
-- name: Create PostgreSQL data directory
-  file:
+- name: Ensure PostgreSQL data directory exists
+  ansible.builtin.file:
     path: /data/patroni
     state: directory
     owner: postgres
     group: postgres
     mode: "0700"
-  tags: patroni
 
-# Копируем конфиг Patroni на сервер
-- name: Copy Patroni config
-  template:
+- name: Ensure PostgreSQL socket directory exists
+  ansible.builtin.file:
+    path: /var/run/postgresql
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "2775"
+
+- name: Configure Patroni
+  ansible.builtin.template:
     src: patroni.yml.j2
     dest: /etc/patroni/patroni.yml
     owner: postgres
     group: postgres
     mode: "0600"
+  no_log: true
   notify: Restart Patroni
-  tags: patroni
 
-# Создаём systemd сервис для Patroni
-- name: Create Patroni systemd service
-  copy:
+- name: Configure Patroni systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: "0644"
     content: |
       [Unit]
       Description=Patroni PostgreSQL HA
-      After=network.target
+      Wants=network-online.target etcd.service
+      After=network-online.target etcd.service
 
       [Service]
       User=postgres
@@ -160,57 +188,41 @@
       ExecStart=/usr/local/bin/patroni /etc/patroni/patroni.yml
       Restart=on-failure
       RestartSec=5
+      TimeoutStopSec=120
+      KillMode=process
 
       [Install]
       WantedBy=multi-user.target
-    dest: /etc/systemd/system/patroni.service
-    mode: "0644"
-  notify: Reload systemd
-  tags: patroni
+  notify:
+    - Reload systemd
+    - Restart Patroni
 
-# Запускаем Patroni
-- name: Start and enable Patroni
-  service:
-    name: patroni
-    state: started
-    enabled: true
-  tags: patroni
-
-# ─── Настройка бэкапов ───────────────────
-- name: Install AWS CLI for backups
-  pip:
-    name: awscli
-    state: present
-    extra_args: "--break-system-packages"
-  tags: backup
-
-# Создаём скрипт бэкапа
-- name: Create backup script
-  copy:
-    content: |
-      #!/bin/bash
-      DATE=$(date +%Y%m%d_%H%M%S)
-      BACKUP_FILE="/tmp/fitflow_backup_${DATE}.sql.gz"
-
-      # Создаём бэкап
-      pg_dump -U postgres fitflow | gzip > $BACKUP_FILE
-
-      # Загружаем в S3
-      aws s3 cp $BACKUP_FILE s3://fitflow-backups-080403789929/backups/
-
-      # Удаляем локальный файл
-      rm -f $BACKUP_FILE
-      echo "Backup completed: $DATE"
-    dest: /usr/local/bin/fitflow-backup.sh
-    mode: "0755"
-  tags: backup
-
-# Добавляем в cron — каждую ночь в 2:00
-- name: Add backup cron job
-  cron:
+- name: Remove obsolete AWS backup cron job
+  ansible.builtin.cron:
     name: "FitFlow database backup"
-    minute: "0"
-    hour: "2"
-    job: "/usr/local/bin/fitflow-backup.sh >> /var/log/fitflow-backup.log 2>&1"
     user: postgres
-  tags: backup
+    state: absent
+
+- name: Remove obsolete S3 backup script
+  ansible.builtin.file:
+    path: /usr/local/bin/fitflow-backup.sh
+    state: absent
+
+- name: Apply pending service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Patroni is enabled and running
+  ansible.builtin.systemd:
+    name: patroni
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for PostgreSQL health through Patroni
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8008/health
+    status_code: 200
+  register: database_health
+  until: database_health.status | default(0) == 200
+  retries: 60
+  delay: 2
