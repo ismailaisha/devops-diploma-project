@@ -1,30 +1,12 @@
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: fitflow_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: fitflow
-      POSTGRES_USER: fitflow
-      POSTGRES_PASSWORD: fitflow_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    networks:
-      - fitflow_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fitflow"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+name: fitflow
 
+services:
   redis:
     image: redis:7-alpine
-    container_name: fitflow_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     networks:
       - fitflow_network
     healthcheck:
@@ -32,49 +14,68 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
-    image: aisharust94/fitflow-api:${API_TAG}
-    container_name: fitflow_api
+    image: aisharust94/fitflow-api:${API_TAG:-dev}
+    build:
+      context: ./services/api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://fitflow:fitflow_password@postgres:5432/fitflow
+      DATABASE_URL: "${DATABASE_URL:?Set DATABASE_URL in .env}"
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key
-      DEBUG: "True"
-    ports:
-      - "8000:8000"
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env}"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
       - fitflow_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
-    image: aisharust94/fitflow-worker:${WORKER_TAG}
-    container_name: fitflow_worker
+    image: aisharust94/fitflow-worker:${WORKER_TAG:-dev}
+    build:
+      context: ./services/worker
     restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - tasks.notifications.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=2
     environment:
-      DATABASE_URL: postgresql://fitflow:fitflow_password@postgres:5432/fitflow
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
       - fitflow_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
-    image: aisharust94/fitflow-frontend:${FRONTEND_TAG}
+    image: aisharust94/fitflow-frontend:${FRONTEND_TAG:-dev}
+    build:
+      context: ./services/frontend
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
@@ -82,9 +83,25 @@ services:
         condition: service_healthy
     networks:
       - fitflow_network
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - --spider
+        - http://127.0.0.1/health
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
-  pg_data:
+  redis_data:
 
 networks:
   fitflow_network:
