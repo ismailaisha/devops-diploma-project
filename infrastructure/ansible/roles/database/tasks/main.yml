@@ -2,6 +2,19 @@
 # PostgreSQL 15 + Patroni с etcd3.
 # Конфигурация самого кластера etcd управляется отдельно.
 
+- name: Allow application access to PostgreSQL over WireGuard
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: wg0
+    proto: tcp
+    from_ip: "{{ hostvars['app_server']['wireguard_ip'] }}"
+    to_ip: "{{ wireguard_ip }}"
+    to_port: "5432"
+    comment: "FitFlow application over WireGuard"
+  tags:
+    - database_access
+
 - name: Check existing Patroni configuration
   ansible.builtin.stat:
     path: /etc/patroni/patroni.yml
@@ -114,8 +127,7 @@
     cache_valid_time: 3600
     policy_rc_d: 101
 
-# Не останавливаем работающий PostgreSQL:
-# его процессом уже управляет Patroni.
+# Процессом PostgreSQL управляет Patroni.
 - name: Disable standalone PostgreSQL service at boot
   ansible.builtin.systemd:
     name: postgresql
