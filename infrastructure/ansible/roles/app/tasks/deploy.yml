@@ -1,0 +1,168 @@
+---
+- name: Validate deployment secrets
+  ansible.builtin.assert:
+    that:
+      - fitflow_db_password is defined
+      - fitflow_secret_key is defined
+      - fitflow_db_password is match('^[0-9a-fA-F]{48}$')
+      - fitflow_secret_key is match('^[0-9a-fA-F]{64}$')
+    fail_msg: >-
+      Expected database password from openssl rand -hex 24
+      and API signing key from openssl rand -hex 32.
+  no_log: true
+
+- name: Read committed source version
+  ansible.builtin.command:
+    argv:
+      - git
+      - rev-parse
+      - --short=12
+      - HEAD
+    chdir: "{{ fitflow_project_root }}"
+  delegate_to: localhost
+  become: false
+  register: fitflow_git_version
+  changed_when: false
+
+- name: Set image version
+  ansible.builtin.set_fact:
+    fitflow_source_version: "{{ fitflow_git_version.stdout | trim }}"
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ fitflow_app_directory }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Create temporary source archive
+  ansible.builtin.tempfile:
+    state: file
+    suffix: .tar.gz
+  delegate_to: localhost
+  become: false
+  register: fitflow_archive
+
+- name: Transfer committed application sources
+  block:
+    - name: Archive application files from Git
+      ansible.builtin.command:
+        argv:
+          - git
+          - archive
+          - --format=tar.gz
+          - "--output={{ fitflow_archive.path }}"
+          - HEAD
+          - docker-compose.yml
+          - services/api
+          - services/worker
+          - services/frontend
+        chdir: "{{ fitflow_project_root }}"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Extract application sources on App Server
+      ansible.builtin.unarchive:
+        src: "{{ fitflow_archive.path }}"
+        dest: "{{ fitflow_app_directory }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+  always:
+    - name: Remove temporary local archive
+      ansible.builtin.file:
+        path: "{{ fitflow_archive.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+
+# Git не хранит пустые каталоги, а Dockerfile фронтенда
+# копирует эти каталоги при сборке.
+- name: Ensure frontend asset directories exist
+  ansible.builtin.file:
+    path: "{{ fitflow_app_directory }}/services/frontend/{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  loop:
+    - css
+    - js
+    - pages
+
+- name: Write protected application environment
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ fitflow_app_directory }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Check database TCP connectivity
+  ansible.builtin.wait_for:
+    host: "{{ fitflow_database_host }}"
+    port: 5432
+    connect_timeout: 5
+    timeout: 20
+
+- name: Validate Compose configuration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --env-file
+      - .env
+      - config
+      - --quiet
+    chdir: "{{ fitflow_app_directory }}"
+  changed_when: false
+  no_log: true
+
+- name: Build application images sequentially
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --env-file
+      - .env
+      - build
+      - "{{ item }}"
+    chdir: "{{ fitflow_app_directory }}"
+  loop:
+    - api
+    - worker
+    - frontend
+  changed_when: true
+
+- name: Start application and wait for readiness
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --env-file
+      - .env
+      - up
+      - -d
+      - --no-build
+      - --wait
+      - --wait-timeout
+      - "180"
+    chdir: "{{ fitflow_app_directory }}"
+  changed_when: true
+
+- name: Verify API through Nginx
+  ansible.builtin.uri:
+    url: http://127.0.0.1/health
+    status_code: 200
+  register: fitflow_http_health
+  until: fitflow_http_health.status | default(0) == 200
+  retries: 10
+  delay: 3
+
+- name: Verify frontend responds
+  ansible.builtin.uri:
+    url: http://127.0.0.1/
+    status_code: 200

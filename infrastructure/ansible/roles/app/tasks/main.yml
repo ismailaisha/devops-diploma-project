@@ -120,3 +120,8 @@
   ansible.builtin.command:
     cmd: docker compose version
   changed_when: false
+
+- name: Deploy FitFlow application
+  ansible.builtin.import_tasks: deploy.yml
+  tags:
+    - app_deploy

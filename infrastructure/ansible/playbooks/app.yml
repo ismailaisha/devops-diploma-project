@@ -1,8 +1,16 @@
 ---
-- name: Prepare FitFlow application server
+- name: Configure and deploy FitFlow
   hosts: app
   become: true
   gather_facts: true
+
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/database/vault.yml"
+
+  vars:
+    fitflow_project_root: "{{ playbook_dir }}/../../.."
+    fitflow_app_directory: /opt/fitflow
+    fitflow_database_host: "10.8.0.3"
 
   roles:
     - app
