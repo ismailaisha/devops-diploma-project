@@ -1,125 +1,160 @@
 ---
-# ─────────────────────────────────────────
-# Роль jenkins — настройка Jenkins Server
-# Jenkins запускается в Docker контейнере
-# ─────────────────────────────────────────
+- name: Check supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_architecture == "x86_64"
+    fail_msg: "This role expects Ubuntu x86_64."
 
-# ─── Установка Java ─────────────────────
-- name: Install Java
-  apt:
-    name: openjdk-17-jdk
+- name: Install Docker repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
     state: present
     update_cache: true
-  tags: java
+    cache_valid_time: 3600
 
-- name: Check Java version
-  command: java -version
-  register: java_version
-  changed_when: false
-  tags: java
-
-# ─── Установка Docker ───────────────────
-
-- name: Create keyrings directory
-  file:
-    path: /usr/share/keyrings
+- name: Create APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
     state: directory
+    owner: root
+    group: root
     mode: "0755"
-  tags: docker
 
-- name: Add Docker GPG key
-  shell: |
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-  args:
-    creates: /usr/share/keyrings/docker-archive-keyring.gpg
-  tags: docker
+- name: Install Docker repository key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
 
-- name: Add Docker repository
-  apt_repository:
-    repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
-    state: present
-    filename: docker
-  tags: docker
+- name: Remove legacy Docker repository entry
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
 
-- name: Install Docker
-  apt:
+- name: Configure Docker repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/ubuntu
+      Suites: {{ ansible_distribution_release }}
+      Components: stable
+      Architectures: amd64
+      Signed-By: /etc/apt/keyrings/docker.asc
+
+- name: Install Docker Engine and build tools
+  ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
       - containerd.io
+      - docker-buildx-plugin
       - docker-compose-plugin
     state: present
     update_cache: true
-  tags: docker
 
-- name: Start and enable Docker
-  service:
+- name: Enable and start Docker
+  ansible.builtin.systemd:
     name: docker
     state: started
     enabled: true
-  tags: docker
 
-# ─── Запуск Jenkins через Docker ────────
+- name: Read Docker socket group
+  ansible.builtin.stat:
+    path: /var/run/docker.sock
+  register: jenkins_docker_socket
 
-- name: Create Jenkins directory
-  file:
+- name: Check Docker socket exists
+  ansible.builtin.assert:
+    that:
+      - jenkins_docker_socket.stat.exists
+      - jenkins_docker_socket.stat.issock
+    fail_msg: "Docker socket is unavailable."
+
+- name: Create persistent Jenkins home
+  ansible.builtin.file:
     path: /opt/jenkins
     state: directory
-    owner: 1000
-    group: 1000
+    owner: "1000"
+    group: "1000"
+    mode: "0750"
+
+- name: Create Jenkins deployment directory
+  ansible.builtin.file:
+    path: /opt/jenkins-stack
+    state: directory
+    owner: root
+    group: root
     mode: "0755"
-  tags: jenkins
 
-- name: Run Jenkins container
-  shell: |
-    docker run -d \
-      --name jenkins \
-      --restart unless-stopped \
-      --group-add 998 \
-      -p 8080:8080 \
-      -p 50000:50000 \
-      -v /opt/jenkins:/var/jenkins_home \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -v /usr/bin/docker:/usr/bin/docker \
-      jenkins/jenkins:lts
-  args:
-    creates: /opt/jenkins/config.xml
-  tags: jenkins
+- name: Copy Jenkins Dockerfile
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: /opt/jenkins-stack/Dockerfile
+    owner: root
+    group: root
+    mode: "0644"
 
-# ─── Открываем порты ────────────────────
+- name: Configure Jenkins Compose stack
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: /opt/jenkins-stack/compose.yml
+    owner: root
+    group: root
+    mode: "0644"
 
-- name: UFW - allow Jenkins UI
-  ufw:
+- name: Allow Jenkins HTTP port in host firewall
+  community.general.ufw:
     rule: allow
     port: "8080"
     proto: tcp
-  tags: firewall
 
-- name: UFW - allow Jenkins agent
-  ufw:
-    rule: allow
-    port: "50000"
-    proto: tcp
-  tags: firewall
-
-# Начальный пароль Jenkins
-
-- name: Wait for Jenkins to start
-  wait_for:
-    timeout: 60
-  tags: jenkins
-
-- name: Get Jenkins initial password
-  shell: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-  register: jenkins_password
-  ignore_errors: true
+- name: Validate Jenkins Compose configuration
+  ansible.builtin.command:
+    cmd: docker compose -f compose.yml config --quiet
+    chdir: /opt/jenkins-stack
   changed_when: false
-  failed_when: false
-  tags: jenkins
 
-- name: Show Jenkins initial password
-  debug:
-    msg: "Jenkins initial password: {{ jenkins_password.stdout }}"
-  when: jenkins_password.stdout is defined
-  tags: jenkins
+- name: Build Jenkins image
+  ansible.builtin.command:
+    cmd: docker compose -f compose.yml build jenkins
+    chdir: /opt/jenkins-stack
+  changed_when: true
+
+- name: Start Jenkins container
+  ansible.builtin.command:
+    cmd: docker compose -f compose.yml up -d --no-build
+    chdir: /opt/jenkins-stack
+  changed_when: true
+
+- name: Wait for Jenkins login page
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/login
+    status_code: 200
+  register: jenkins_http_status
+  until: jenkins_http_status.status | default(0) == 200
+  retries: 60
+  delay: 5
+
+- name: Verify Docker access from Jenkins user
+  ansible.builtin.command:
+    cmd: docker exec --user jenkins jenkins docker version
+  changed_when: false
+
+- name: Verify Docker Buildx inside Jenkins
+  ansible.builtin.command:
+    cmd: docker exec --user jenkins jenkins docker buildx version
+  changed_when: false
+
+- name: Verify SSH client inside Jenkins
+  ansible.builtin.command:
+    cmd: docker exec --user jenkins jenkins ssh -V
+  changed_when: false

@@ -1,0 +1,28 @@
+name: fitflow-jenkins
+
+services:
+  jenkins:
+    image: fitflow-jenkins:local
+    build:
+      context: .
+    container_name: jenkins
+    restart: unless-stopped
+
+    group_add:
+      - "{{ jenkins_docker_socket.stat.gid }}"
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx1024m"
+
+    volumes:
+      - /opt/jenkins:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
