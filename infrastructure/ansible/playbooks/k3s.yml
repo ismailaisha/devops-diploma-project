@@ -1,0 +1,11 @@
+---
+- name: "K3s: Настройка существующего управляющего узла"
+  hosts: k3s_master
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Применение настроек Master"
+      ansible.builtin.include_role:
+        name: k3s
+        tasks_from: master

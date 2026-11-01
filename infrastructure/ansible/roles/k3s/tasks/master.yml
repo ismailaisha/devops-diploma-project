@@ -1,27 +1,107 @@
 ---
-- name: "Master: Установка K3s и привязка к интерфейсу wg0"
-  ansible.builtin.shell: |
-    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | sh -s - server \
-      --node-ip=10.8.0.5 \
-      --flannel-iface=wg0 \
-      --write-kubeconfig-mode "644"
-  tags: k3s
+- name: "Master: Проверка установленной версии K3s"
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s --version
+  register: k3s_master_version
+  changed_when: false
 
-- name: "Master: Ожидание генерации токена кластера"
-  ansible.builtin.wait_for:
-    path: /var/lib/rancher/k3s/server/node-token
-    timeout: 300
-  tags: k3s
+- name: "Master: Проверка ожидаемой версии"
+  ansible.builtin.assert:
+    that:
+      - "'v1.36.4+k3s1' in k3s_master_version.stdout"
+    fail_msg: >-
+      Версия управляющего узла отличается от v1.36.4+k3s1.
+      Автоматическое обновление этим сценарием не выполняется.
 
-- name: "Master: Чтение токена кластера"
-  ansible.builtin.slurp:
-    src: /var/lib/rancher/k3s/server/node-token
-  register: k3s_token_base64
-  tags: k3s
+- name: "Master: Проверка интерфейса WireGuard"
+  ansible.builtin.command:
+    cmd: ip link show wg0
+  changed_when: false
 
-- name: "Master: Сохранение токена в память localhost"
-  ansible.builtin.set_fact:
-    k3s_cluster_token: "{{ k3s_token_base64.content | b64decode | trim }}"
-  delegate_to: localhost
-  delegate_facts: true
-  tags: k3s
+- name: "Master: Создание каталога systemd override"
+  ansible.builtin.file:
+    path: /etc/systemd/system/k3s.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Master: Настройка запуска K3s"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k3s.service.d/10-fitflow.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/local/bin/k3s server --node-ip={{ wireguard_ip }} --flannel-iface=wg0 --write-kubeconfig-mode=0600 --disable=servicelb --disable=traefik
+  register: k3s_master_override
+
+- name: "Master: Удаление конфликтующего старого override"
+  ansible.builtin.file:
+    path: /etc/systemd/system/k3s.service.d/override.conf
+    state: absent
+  register: k3s_legacy_override
+
+- name: "Master: Применение изменённых параметров"
+  ansible.builtin.systemd:
+    name: k3s
+    daemon_reload: true
+    state: restarted
+    enabled: true
+  when: k3s_master_override.changed or k3s_legacy_override.changed
+
+- name: "Master: Проверка запуска службы"
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: "Master: Ограничение доступа к kubeconfig"
+  ansible.builtin.file:
+    path: /etc/rancher/k3s/k3s.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: "Master: Ожидание готовности Kubernetes API"
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl get --raw=/readyz --request-timeout=10s
+  register: k3s_api_ready
+  changed_when: false
+  retries: 30
+  delay: 5
+  until: k3s_api_ready.rc == 0
+
+- name: "Master: Ожидание удаления Deployment Traefik"
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/k3s kubectl
+      -n kube-system get deployment traefik
+      --ignore-not-found
+      -o name
+      --request-timeout=10s
+  register: k3s_traefik_deployment
+  changed_when: false
+  retries: 30
+  delay: 5
+  until:
+    - k3s_traefik_deployment.rc == 0
+    - k3s_traefik_deployment.stdout | trim == ""
+
+- name: "Master: Ожидание удаления Service Traefik"
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/k3s kubectl
+      -n kube-system get service traefik
+      --ignore-not-found
+      -o name
+      --request-timeout=10s
+  register: k3s_traefik_service
+  changed_when: false
+  retries: 30
+  delay: 5
+  until:
+    - k3s_traefik_service.rc == 0
+    - k3s_traefik_service.stdout | trim == ""
