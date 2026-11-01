@@ -1,4 +1,58 @@
 ---
+- name: "K3s: Подготовка сети узлов"
+  hosts: k3s_master:k3s_worker
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Разрешение Flannel VXLAN между узлами через WireGuard"
+      community.general.ufw:
+        rule: allow
+        direction: in
+        interface: wg0
+        from_ip: "{{ hostvars[item]['wireguard_ip'] }}"
+        to_port: "8472"
+        proto: udp
+      loop: "{{ groups['k3s_master'] + groups['k3s_worker'] }}"
+      when: item != inventory_hostname
+
+    - name: "Разрешение kubelet между узлами через WireGuard"
+      community.general.ufw:
+        rule: allow
+        direction: in
+        interface: wg0
+        from_ip: "{{ hostvars[item]['wireguard_ip'] }}"
+        to_port: "10250"
+        proto: tcp
+      loop: "{{ groups['k3s_master'] + groups['k3s_worker'] }}"
+      when: item != inventory_hostname
+
+    - name: "Разрешение Kubernetes API от Worker"
+      community.general.ufw:
+        rule: allow
+        direction: in
+        interface: wg0
+        from_ip: "{{ hostvars[item]['wireguard_ip'] }}"
+        to_port: "6443"
+        proto: tcp
+      loop: "{{ groups['k3s_worker'] }}"
+      when: inventory_hostname in groups['k3s_master']
+
+    - name: "Разрешение входящего трафика сетей Kubernetes"
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ item }}"
+      loop:
+        - "10.42.0.0/16"
+        - "10.43.0.0/16"
+
+    - name: "Разрешение маршрутизации между Pod"
+      community.general.ufw:
+        rule: allow
+        route: true
+        from_ip: "10.42.0.0/16"
+        to_ip: "10.42.0.0/16"
+
 - name: "K3s: Настройка существующего управляющего узла"
   hosts: k3s_master
   become: true
@@ -9,3 +63,14 @@
       ansible.builtin.include_role:
         name: k3s
         tasks_from: master
+
+- name: "K3s: Подключение Azure Worker"
+  hosts: k3s_worker
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Применение настроек Worker"
+      ansible.builtin.include_role:
+        name: k3s
+        tasks_from: worker

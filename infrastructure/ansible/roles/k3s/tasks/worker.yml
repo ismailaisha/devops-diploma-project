@@ -1,33 +1,124 @@
 ---
-- name: "Worker: Получение K3s token с Master"
+- name: "Worker: Проверка интерфейса WireGuard"
+  ansible.builtin.command:
+    cmd: ip link show wg0
+  changed_when: false
+
+- name: "Worker: Проверка доступности Kubernetes API"
+  ansible.builtin.wait_for:
+    host: "{{ hostvars['monitoring_server']['wireguard_ip'] }}"
+    port: 6443
+    connect_timeout: 5
+    timeout: 30
+
+- name: "Worker: Создание каталога конфигурации"
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "Worker: Получение токена агента с Master"
   ansible.builtin.slurp:
-    src: /var/lib/rancher/k3s/server/node-token
+    src: /var/lib/rancher/k3s/server/agent-token
   delegate_to: monitoring_server
-  register: k3s_token_base64
   become: true
-  run_once: true
+  register: k3s_agent_token
+  no_log: true
 
-- name: "Worker: Сохранение K3s token"
-  ansible.builtin.set_fact:
-    k3s_cluster_token: "{{ k3s_token_base64.content | b64decode | trim }}"
+- name: "Worker: Сохранение токена"
+  ansible.builtin.copy:
+    content: "{{ k3s_agent_token.content | b64decode | trim }}\n"
+    dest: /etc/rancher/k3s/agent-token
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_agent_token_file
+  no_log: true
 
-- name: "Worker: Установка K3s Agent и подключение к Master через VPN"
-  ansible.builtin.shell: |
-    curl -sfL --connect-timeout 30 --retry 10 --retry-delay 5 https://get.k3s.io | \
-    K3S_URL=https://10.8.0.5:6443 \
-    K3S_TOKEN={{ k3s_cluster_token }} \
-    sh -s - agent \
-      --node-ip={{ wireguard_ip }} \
-      --flannel-iface=wg0
-  args:
-    creates: /etc/systemd/system/k3s-agent.service
-  tags:
-    - k3s
+- name: "Worker: Создание конфигурации"
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      server: "https://{{ hostvars['monitoring_server']['wireguard_ip'] }}:6443"
+      token-file: /etc/rancher/k3s/agent-token
+      node-name: fitflow-app
+      node-ip: "{{ wireguard_ip }}"
+      flannel-iface: wg0
+  register: k3s_agent_config
 
-- name: "Worker: Проверка статуса K3s Agent"
+- name: "Worker: Проверка установленной службы"
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k3s-agent.service
+  register: k3s_agent_service
+
+- name: "Worker: Загрузка установщика K3s"
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /usr/local/sbin/install-k3s.sh
+    owner: root
+    group: root
+    mode: "0700"
+    timeout: 60
+  when: not k3s_agent_service.stat.exists
+
+- name: "Worker: Установка K3s Agent"
+  ansible.builtin.command:
+    cmd: /bin/sh /usr/local/sbin/install-k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "v1.36.4+k3s1"
+    INSTALL_K3S_EXEC: "agent"
+    INSTALL_K3S_SKIP_START: "true"
+  when: not k3s_agent_service.stat.exists
+
+- name: "Worker: Проверка установленной версии"
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s --version
+  register: k3s_agent_version
+  changed_when: false
+
+- name: "Worker: Проверка соответствия версии Master"
+  ansible.builtin.assert:
+    that:
+      - "'v1.36.4+k3s1' in k3s_agent_version.stdout"
+    fail_msg: "Версия агента отличается от ожидаемой v1.36.4+k3s1."
+
+- name: "Worker: Применение изменений существующего агента"
   ansible.builtin.systemd:
     name: k3s-agent
-    state: started
+    daemon_reload: true
     enabled: true
-  tags:
-    - k3s
+    state: restarted
+  when:
+    - k3s_agent_service.stat.exists
+    - k3s_agent_config.changed or k3s_agent_token_file.changed
+
+- name: "Worker: Запуск агента"
+  ansible.builtin.systemd:
+    name: k3s-agent
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: "Worker: Ожидание регистрации узла"
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl get node fitflow-app --request-timeout=10s
+  delegate_to: monitoring_server
+  register: k3s_worker_registration
+  changed_when: false
+  retries: 30
+  delay: 5
+  until: k3s_worker_registration.rc == 0
+
+- name: "Worker: Ожидание состояния Ready"
+  ansible.builtin.command:
+    cmd: >-
+      /usr/local/bin/k3s kubectl wait
+      --for=condition=Ready node/fitflow-app
+      --timeout=180s
+  delegate_to: monitoring_server
+  changed_when: false
