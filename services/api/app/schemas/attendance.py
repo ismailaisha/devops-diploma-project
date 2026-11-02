@@ -1,24 +1,25 @@
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel, Field
+
 from app.models.attendance import AttendanceStatus
 
 
 class AttendanceCreate(BaseModel):
     schedule_id: int
     status: AttendanceStatus
-    feeling: Optional[int] = Field(None, ge=1, le=5)
-    actual_weight_kg: Optional[int] = None
-    actual_reps: Optional[int] = None
-    notes: Optional[str] = None
+    feeling: int | None = Field(None, ge=1, le=5)
+    actual_weight_kg: int | None = None
+    actual_reps: int | None = None
+    notes: str | None = None
 
 
 class AttendanceUpdate(BaseModel):
-    status: Optional[AttendanceStatus] = None
-    feeling: Optional[int] = Field(None, ge=1, le=5)
-    actual_weight_kg: Optional[int] = None
-    actual_reps: Optional[int] = None
-    notes: Optional[str] = None
+    status: AttendanceStatus | None = None
+    feeling: int | None = Field(None, ge=1, le=5)
+    actual_weight_kg: int | None = None
+    actual_reps: int | None = None
+    notes: str | None = None
 
 
 class AttendanceResponse(BaseModel):
@@ -26,11 +27,11 @@ class AttendanceResponse(BaseModel):
     schedule_id: int
     client_id: int
     status: AttendanceStatus
-    completed_at: Optional[datetime] = None
-    feeling: Optional[int] = None
-    actual_weight_kg: Optional[int] = None
-    actual_reps: Optional[int] = None
-    notes: Optional[str] = None
+    completed_at: datetime | None = None
+    feeling: int | None = None
+    actual_weight_kg: int | None = None
+    actual_reps: int | None = None
+    notes: str | None = None
     created_at: datetime
 
     class Config:

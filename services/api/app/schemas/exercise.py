@@ -1,24 +1,25 @@
+
 from pydantic import BaseModel
-from typing import Optional
-from app.models.exercise import MuscleGroup, ExerciseType
+
+from app.models.exercise import ExerciseType, MuscleGroup
 
 
 class ExerciseCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     muscle_group: MuscleGroup
     exercise_type: ExerciseType
-    photo_url: Optional[str] = None
-    video_url: Optional[str] = None
+    photo_url: str | None = None
+    video_url: str | None = None
 
 
 class ExerciseUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    muscle_group: Optional[MuscleGroup] = None
-    exercise_type: Optional[ExerciseType] = None
-    photo_url: Optional[str] = None
-    video_url: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    muscle_group: MuscleGroup | None = None
+    exercise_type: ExerciseType | None = None
+    photo_url: str | None = None
+    video_url: str | None = None
 
 
 class ExerciseResponse(ExerciseCreate):

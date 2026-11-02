@@ -1,18 +1,23 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
-from app.core.database import get_db
+
 from app.api.auth import get_current_user
-from app.schemas.exercise import ExerciseCreate, ExerciseUpdate, ExerciseResponse
+from app.core.database import get_db
+from app.schemas.exercise import ExerciseCreate, ExerciseResponse, ExerciseUpdate
 from app.services.exercise import (
-    create_exercise, get_all_exercises,
-    get_exercise_by_id, update_exercise, delete_exercise
+    create_exercise,
+    delete_exercise,
+    get_all_exercises,
+    get_exercise_by_id,
+    update_exercise,
 )
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[ExerciseResponse])
+@router.get("/", response_model=list[ExerciseResponse])
 def list_exercises(db: Session = Depends(get_db)):
     return get_all_exercises(db)
 

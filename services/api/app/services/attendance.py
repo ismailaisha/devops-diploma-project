@@ -1,5 +1,7 @@
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
 from app.models.attendance import Attendance, AttendanceStatus
 from app.schemas.attendance import AttendanceCreate, AttendanceUpdate
 

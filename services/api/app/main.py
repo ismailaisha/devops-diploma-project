@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import attendance, auth, exercises, health, programs, schedules
 from app.core.database import Base, engine
-from app.api import auth, exercises, programs, schedules, attendance, health
 
 # Создаём все таблицы в БД при старте
 Base.metadata.create_all(bind=engine)

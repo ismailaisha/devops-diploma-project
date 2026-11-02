@@ -1,5 +1,6 @@
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+
 from app.models.user import UserRole
 
 
@@ -14,8 +15,8 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    full_name: str | None = None
+    email: EmailStr | None = None
 
 
 class UserResponse(UserBase):
@@ -28,26 +29,26 @@ class UserResponse(UserBase):
 
 
 class TrainerProfileCreate(BaseModel):
-    specialization: Optional[str] = None
-    experience_years: Optional[int] = 0
-    bio: Optional[str] = None
+    specialization: str | None = None
+    experience_years: int | None = 0
+    bio: str | None = None
 
 
 class TrainerProfileResponse(TrainerProfileCreate):
     id: int
     user_id: int
-    photo_url: Optional[str] = None
+    photo_url: str | None = None
 
     class Config:
         from_attributes = True
 
 
 class ClientProfileCreate(BaseModel):
-    age: Optional[int] = None
-    weight: Optional[int] = None
-    height: Optional[int] = None
-    fitness_level: Optional[str] = None
-    goal: Optional[str] = None
+    age: int | None = None
+    weight: int | None = None
+    height: int | None = None
+    fitness_level: str | None = None
+    goal: str | None = None
 
 
 class ClientProfileResponse(ClientProfileCreate):

@@ -1,12 +1,17 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
-from app.core.database import get_db
+
 from app.api.auth import get_current_user
-from app.schemas.program import ProgramCreate, ProgramUpdate, ProgramResponse
+from app.core.database import get_db
+from app.schemas.program import ProgramCreate, ProgramResponse, ProgramUpdate
 from app.services.program import (
-    create_program, get_programs_by_trainer,
-    get_programs_by_client, get_program_by_id, update_program
+    create_program,
+    get_program_by_id,
+    get_programs_by_client,
+    get_programs_by_trainer,
+    update_program,
 )
 
 router = APIRouter()
@@ -21,7 +26,7 @@ def add_program(
     return create_program(db, data, trainer_id=current_user.id)
 
 
-@router.get("/my", response_model=List[ProgramResponse])
+@router.get("/my", response_model=list[ProgramResponse])
 def my_programs(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)

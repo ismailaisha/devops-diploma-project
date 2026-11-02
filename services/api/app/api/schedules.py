@@ -1,12 +1,17 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
-from app.core.database import get_db
+
 from app.api.auth import get_current_user
-from app.schemas.schedule import ScheduleCreate, ScheduleUpdate, ScheduleResponse
+from app.core.database import get_db
+from app.schemas.schedule import ScheduleCreate, ScheduleResponse, ScheduleUpdate
 from app.services.schedule import (
-    create_schedule, get_schedules_by_trainer,
-    get_schedules_by_client, get_schedule_by_id, update_schedule
+    create_schedule,
+    get_schedule_by_id,
+    get_schedules_by_client,
+    get_schedules_by_trainer,
+    update_schedule,
 )
 
 router = APIRouter()
@@ -21,7 +26,7 @@ def add_schedule(
     return create_schedule(db, data, trainer_id=current_user.id)
 
 
-@router.get("/my", response_model=List[ScheduleResponse])
+@router.get("/my", response_model=list[ScheduleResponse])
 def my_schedules(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
