@@ -2,26 +2,37 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - alertmanager:9093
-
 scrape_configs:
-  # Сам Prometheus
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
-  # App Server метрики
-  - job_name: 'app_server'
-    static_configs:
-      - targets: ['{{ hostvars["app_server"]["ansible_host"] }}:8000']
-
-  # Node exporter — системные метрики серверов
-  - job_name: 'node_exporter'
+  # Метрики самого Prometheus.
+  - job_name: prometheus
     static_configs:
       - targets:
-          - '{{ hostvars["app_server"]["ansible_host"] }}:9100'
-          - '{{ hostvars["jenkins_server"]["ansible_host"] }}:9100'
+          - localhost:9090
+
+  # Системные метрики серверов через WireGuard.
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - '{{ hostvars["app_server"]["wireguard_ip"] }}:9100'
+        labels:
+          host: app_server
+
+      - targets:
+          - '{{ hostvars["jenkins_server"]["wireguard_ip"] }}:9100'
+        labels:
+          host: jenkins_server
+
+      - targets:
+          - '{{ hostvars["pg_master"]["wireguard_ip"] }}:9100'
+        labels:
+          host: pg_master
+
+      - targets:
+          - '{{ hostvars["pg_replica"]["wireguard_ip"] }}:9100'
+        labels:
+          host: pg_replica
+
+      - targets:
+          - '{{ hostvars["monitoring_server"]["wireguard_ip"] }}:9100'
+        labels:
+          host: monitoring_server
