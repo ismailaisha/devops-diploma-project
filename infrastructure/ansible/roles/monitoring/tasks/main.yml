@@ -1,10 +1,5 @@
 ---
-# ─────────────────────────────────────────
-# Роль monitoring — настройка мониторинга
-# Prometheus + Grafana + Loki
-# ─────────────────────────────────────────
-
-# ─── Установка Docker ───────────────────
+# Docker
 - name: Ensure keyrings directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -43,25 +38,9 @@
     enabled: true
   tags: docker
 
-# ─── Настройка стабильного зеркала Docker Hub ───
-- name: "Monitoring: Configure stable Docker registry mirror"
-  ansible.builtin.copy:
-    content: |
-      {
-        "registry-mirrors": [
-          "https://daocloud.io",
-          "https://163.com",
-          "https://docker-cn.com"
-        ]
-      }
-    dest: /etc/docker/daemon.json
-    mode: "0644"
-  tags: monitoring
-
-
-# ─── Создаём структуру папок ────────────
+# Каталоги
 - name: Create monitoring directories
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     mode: "0755"
@@ -72,29 +51,40 @@
     - /opt/monitoring/loki
   tags: monitoring
 
-# ─── Копируем конфиги ───────────────────
+# Prometheus
 - name: Copy Prometheus config
-  template:
+  ansible.builtin.template:
     src: prometheus.yml.j2
     dest: /opt/monitoring/prometheus/prometheus.yml
     mode: "0644"
   notify: Restart monitoring
   tags: monitoring
 
-
+# Loki
 - name: Copy Loki config
-  copy:
+  ansible.builtin.copy:
+    dest: /opt/monitoring/loki/loki.yml
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
     content: |
       auth_enabled: false
+
       server:
         http_listen_port: 3100
+
       ingester:
+        wal:
+          enabled: true
+          dir: /loki/wal
         lifecycler:
           address: 127.0.0.1
           ring:
             kvstore:
               store: inmemory
             replication_factor: 1
+
       schema_config:
         configs:
           - from: 2020-10-24
@@ -104,61 +94,76 @@
             index:
               prefix: index_
               period: 24h
+
       storage_config:
         boltdb_shipper:
           active_index_directory: /loki/index
           cache_location: /loki/index_cache
         filesystem:
           directory: /loki/chunks
+
+      compactor:
+        working_directory: /loki/compactor
+
       limits_config:
+        allow_structured_metadata: false
         reject_old_samples: true
         reject_old_samples_max_age: 168h
-    dest: /opt/monitoring/loki/loki.yml
-    mode: "0644"
-  tags: monitoring
+  notify: Restart Loki
+  tags:
+    - monitoring
+    - loki_config
 
-# ─── Копируем docker-compose ─────────────
+- name: Apply pending monitoring handlers
+  ansible.builtin.meta: flush_handlers
+  tags: loki_config
+
+- name: Wait for Loki readiness
+  ansible.builtin.uri:
+    url: http://127.0.0.1:3100/ready
+    status_code: 200
+    use_proxy: false
+    timeout: 5
+  register: loki_readiness
+  until: loki_readiness.status | default(0) == 200
+  retries: 24
+  delay: 5
+  tags: loki_config
+
+# Compose
 - name: Copy monitoring docker-compose
-  template:
+  ansible.builtin.template:
     src: docker-compose.monitoring.yml.j2
     dest: /opt/monitoring/docker-compose.yml
     mode: "0644"
   notify: Restart monitoring
   tags: monitoring
 
-# ─── Запускаем мониторинг ────────────────
 - name: Start monitoring stack
-  shell: |
-    cd /opt/monitoring
-    docker compose up -d
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt/monitoring
+  changed_when: true
   tags: monitoring
 
-# ─── Открываем порты ────────────────────
+# Firewall
 - name: UFW - allow Grafana
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "3000"
     proto: tcp
   tags: firewall
 
 - name: UFW - allow Prometheus
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "9090"
     proto: tcp
   tags: firewall
 
 - name: UFW - allow Loki
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "3100"
     proto: tcp
   tags: firewall
-
-- name: UFW - allow Kubernetes API Server
-  ufw:
-    rule: allow
-    port: "6443"
-    proto: tcp
-  tags: firewall
-

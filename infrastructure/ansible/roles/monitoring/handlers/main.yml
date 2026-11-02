@@ -1,5 +1,11 @@
 ---
 - name: Restart monitoring
-  shell: |
-    cd /opt/monitoring
-    docker compose restart
+  ansible.builtin.command:
+    cmd: docker compose restart
+    chdir: /opt/monitoring
+  changed_when: true
+
+- name: Restart Loki
+  ansible.builtin.command:
+    cmd: docker restart loki
+  changed_when: true
