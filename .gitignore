@@ -30,3 +30,6 @@ Thumbs.db
 # Logs
 *.log
 infrastructure/ansible/inventory/hosts.yml
+
+# Saved Terraform plan
+/infrastructure/terraform/environments/dev/tfplan
