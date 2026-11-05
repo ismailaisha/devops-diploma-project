@@ -1,19 +1,32 @@
-services:
+name: monitoring
 
+services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
 
   grafana:
     image: grafana/grafana:latest
@@ -24,7 +37,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin123
       GF_USERS_ALLOW_SIGN_UP: "false"
     depends_on:
       - prometheus
@@ -34,7 +46,7 @@ services:
     container_name: loki
     restart: unless-stopped
     volumes:
-      - ./loki/loki.yml:/etc/loki/loki.yml
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
       - loki_data:/loki
     ports:
       - "3100:3100"
@@ -44,3 +56,6 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
+  alertmanager_data:
+    external: true
+    name: daea43ba15776bfaa3a64facfbe0fd5be59a559042995d7ef845d9ee7bda618f

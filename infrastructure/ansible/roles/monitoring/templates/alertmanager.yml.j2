@@ -1,0 +1,29 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'instance']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+  receiver: telegram
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: {{ vault_alertmanager_telegram_bot_token | to_json }}
+        chat_id: {{ vault_alertmanager_telegram_chat_id | int }}
+        send_resolved: true
+        parse_mode: ""
+        message: |
+{% raw %}
+          FitFlow
+          {{ if eq .Status "firing" }}ПРОБЛЕМА{{ else }}ВОССТАНОВЛЕНО{{ end }}
+          {{ range .Alerts }}
+          Правило: {{ .Labels.alertname }}
+          {{ if .Labels.instance }}Адрес: {{ .Labels.instance }}{{ end }}
+          {{ if .Labels.host }}Сервер: {{ .Labels.host }}{{ end }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+{% endraw %}

@@ -1,0 +1,91 @@
+---
+- name: Create Prometheus rules directory
+  ansible.builtin.file:
+    path: /opt/monitoring/prometheus/rules
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy FitFlow alerting rules
+  ansible.builtin.copy:
+    src: fitflow-alerts.yml
+    dest: /opt/monitoring/prometheus/rules/fitflow-alerts.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /opt/monitoring/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read ownership of the working Alertmanager configuration
+  ansible.builtin.stat:
+    path: /opt/monitoring/alertmanager/alertmanager.yml
+  register: monitoring_alertmanager_config
+
+- name: Render Alertmanager configuration from Vault
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: /opt/monitoring/alertmanager/alertmanager.yml
+    owner: "{{ monitoring_alertmanager_config.stat.uid }}"
+    group: "{{ monitoring_alertmanager_config.stat.gid }}"
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Render monitoring Compose configuration
+  ansible.builtin.template:
+    src: docker-compose.monitoring.yml.j2
+    dest: /opt/monitoring/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Validate monitoring Compose configuration
+  ansible.builtin.command:
+    cmd: docker compose config --quiet
+    chdir: /opt/monitoring
+  changed_when: false
+
+- name: Validate Prometheus configuration and mounted rules
+  ansible.builtin.command:
+    cmd: >-
+      docker compose run --rm --no-deps --pull never
+      --entrypoint /bin/promtool prometheus
+      check config /etc/prometheus/prometheus.yml
+    chdir: /opt/monitoring
+  changed_when: false
+
+- name: Validate Alertmanager configuration
+  ansible.builtin.command:
+    cmd: >-
+      docker compose run --rm --no-deps --pull never
+      --entrypoint /bin/amtool alertmanager
+      check-config /etc/alertmanager/alertmanager.yml
+    chdir: /opt/monitoring
+  changed_when: false
+  no_log: true
+
+- name: Apply configuration to Prometheus and Alertmanager
+  ansible.builtin.command:
+    cmd: >-
+      docker compose up -d --no-deps --pull never --force-recreate
+      alertmanager prometheus
+    chdir: /opt/monitoring
+
+- name: Wait for both monitoring services to become ready
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    status_code: 200
+  loop:
+    - http://127.0.0.1:9093/-/ready
+    - http://127.0.0.1:9090/-/ready
+  register: monitoring_ready
+  until: monitoring_ready.status | default(0) == 200
+  retries: 20
+  delay: 3

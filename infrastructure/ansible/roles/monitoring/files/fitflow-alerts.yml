@@ -1,0 +1,43 @@
+groups:
+  - name: fitflow-infrastructure
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Недоступны метрики сервера {{ $labels.host }}"
+          description: >-
+            Prometheus не получает метрики от {{ $labels.instance }}
+            более двух минут. Проверь Node Exporter, сеть и состояние сервера.
+
+      - alert: RootDiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes{
+              job="node_exporter",
+              mountpoint="/",
+              fstype!~"tmpfs|overlay|squashfs"
+            }
+            /
+            node_filesystem_size_bytes{
+              job="node_exporter",
+              mountpoint="/",
+              fstype!~"tmpfs|overlay|squashfs"
+            }
+          ) * 100 < 10
+          and on(instance, job, device, mountpoint)
+          node_filesystem_readonly{
+            job="node_exporter",
+            mountpoint="/"
+          } == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало места на системном диске {{ $labels.host }}"
+          description: >-
+            На разделе / сервера {{ $labels.instance }}
+            доступно менее 10% места в течение пяти минут.
+            Сейчас доступно: {{ $value | printf "%.1f" }}%.
